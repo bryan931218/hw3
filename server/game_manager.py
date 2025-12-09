@@ -182,6 +182,8 @@ def create_room(db: Database, host: str, game_id: str) -> Tuple[bool, str, Optio
             "version": game["latest_version"],
             "host": host,
             "players": [host],
+            "max_players": game.get("max_players"),
+            "min_players": game.get("min_players"),
             "status": "waiting",
             "created_at": int(time.time()),
         }

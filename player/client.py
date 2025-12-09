@@ -318,15 +318,19 @@ def join_room(player: str) -> Optional[Dict]:
         print("沒有符合你已安裝遊戲的房間")
         return None
     rid = prompt("輸入要加入的房號: ").strip()
+    # 先取得房間資訊以核對版本，避免未更新就加入
+    detail = fetch_room(rid)
+    if not detail:
+        print("房間不存在或已關閉")
+        return None
+    target_version = detail.get("version")
+    if not ensure_latest_version(player, detail.get("game_id"), target_version):
+        return None
     resp = requests.post(f"{SERVER_URL}/rooms/{rid}/join", json={"player": player})
     data = resp.json()
     print(data.get("message"))
     if data.get("success"):
-        room = data["data"]
-        # 確保版本符合房間指定版本
-        if not ensure_latest_version(player, room["game_id"], room.get("version")):
-            return None
-        return room
+        return data["data"]
     return None
 
 
@@ -398,9 +402,9 @@ def room_lobby(player: str, room: Dict):
             print(
                 f"\n=== 房間 {room['id']} ===\n"
                 f"遊戲: {room['game_id']} 版本: {room['version']}\n"
-            f"房主: {host} | 玩家 ({len(room.get('players', []))}/{room.get('max_players','?')}): {', '.join(room.get('players', []))}\n"
-            f"狀態: {status}"
-        )
+                f"房主: {host} | 玩家 ({len(room.get('players', []))}/{room.get('max_players','?')}): {', '.join(room.get('players', []))}\n"
+                f"狀態: {status}"
+            )
             if player == host:
                 print("1) 開始遊戲  2) 離開房間")
             else:
