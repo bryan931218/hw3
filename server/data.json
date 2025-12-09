@@ -1,0 +1,142 @@
+{
+  "developers": {
+    "test": {
+      "password": "test",
+      "games": [
+        "test",
+        "gui-game"
+      ]
+    }
+  },
+  "players": {
+    "test": {
+      "password": "test",
+      "played_games": {
+        "test": 2,
+        "gui-game": 1
+      },
+      "online": true
+    },
+    "test2": {
+      "password": "test2",
+      "played_games": {
+        "test": 2,
+        "gui-game": 1
+      },
+      "online": true
+    }
+  },
+  "games": {
+    "test": {
+      "id": "test",
+      "name": "test",
+      "developer": "test",
+      "description": "hihi",
+      "game_type": "cli",
+      "min_players": 2,
+      "max_players": 2,
+      "active": false,
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\server\\storage\\games\\test\\1.0.0.zip",
+          "uploaded_at": 1765263473,
+          "notes": "Initial release"
+        },
+        {
+          "version": "1.0.1",
+          "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\server\\storage\\games\\test\\1.0.1.zip",
+          "uploaded_at": 1765265953,
+          "notes": "nono"
+        }
+      ],
+      "latest_version": "1.0.1",
+      "ratings": []
+    },
+    "gui-game": {
+      "id": "gui-game",
+      "name": "GUI_game",
+      "developer": "test",
+      "description": "test",
+      "game_type": "gui",
+      "min_players": 2,
+      "max_players": 2,
+      "active": true,
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\server\\storage\\games\\gui-game\\1.0.0.zip",
+          "uploaded_at": 1765267712,
+          "notes": "Initial release"
+        }
+      ],
+      "latest_version": "1.0.0",
+      "ratings": [
+        "1"
+      ]
+    }
+  },
+  "rooms": {
+    "1": {
+      "id": "1",
+      "game_id": "test",
+      "version": "1.0.0",
+      "host": "test",
+      "players": [
+        "test",
+        "test2"
+      ],
+      "status": "in_game",
+      "created_at": 1765263890
+    },
+    "2": {
+      "id": "2",
+      "game_id": "test",
+      "version": "1.0.0",
+      "host": "test",
+      "players": [
+        "test",
+        "test2"
+      ],
+      "status": "in_game",
+      "created_at": 1765265239
+    },
+    "3": {
+      "id": "3",
+      "game_id": "test",
+      "version": "1.0.1",
+      "host": "test2",
+      "players": [
+        "test2"
+      ],
+      "status": "waiting",
+      "created_at": 1765266137
+    },
+    "4": {
+      "id": "4",
+      "game_id": "gui-game",
+      "version": "1.0.0",
+      "host": "test",
+      "players": [
+        "test",
+        "test2"
+      ],
+      "status": "in_game",
+      "created_at": 1765268060
+    }
+  },
+  "ratings": {
+    "1": {
+      "id": "1",
+      "player": "test2",
+      "game_id": "gui-game",
+      "score": 4,
+      "comment": "\u8d85\u8b9a",
+      "created_at": 1765269355
+    }
+  },
+  "next_ids": {
+    "room": 5,
+    "rating": 2
+  }
+}

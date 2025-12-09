@@ -1,0 +1,9 @@
+{
+  "name": "GUI TicTacToe",
+  "entry": "main.py",
+  "type": "gui",
+  "description": "雙人 GUI 井字棋，按鈕操作即可完成對戰",
+  "max_players": 2,
+  "min_players": 2,
+  "server_entry": "server.py"
+}
