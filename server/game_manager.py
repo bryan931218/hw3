@@ -1,6 +1,7 @@
 import base64
 import os
 import re
+import shutil
 import time
 from typing import Dict, List, Optional, Tuple
 
@@ -108,16 +109,25 @@ def remove_game(db: Database, developer: str, game_id: str) -> Tuple[bool, str]:
             return False, "遊戲不存在"
         if game["developer"] != developer:
             return False, "無權限下架此遊戲"
-        if not game.get("active", True):
-            return False, "遊戲已下架"
-        # 若有進行中的房間，阻止下架以避免狀態不一致
-        active_rooms = [
-            r for r in data.get("rooms", {}).values() if r.get("game_id") == game_id and r.get("status") != "finished"
-        ]
-        if active_rooms:
-            return False, "仍有進行中的房間，請先關閉後再下架"
-        game["active"] = False
-        return True, "已下架"
+        # 關閉並清除所有與此遊戲相關的房間
+        room_ids = [rid for rid, r in data.get("rooms", {}).items() if r.get("game_id") == game_id]
+        for rid in room_ids:
+            game_runtime.stop_game_server(rid)
+            data["rooms"].pop(rid, None)
+        # 移除所有相關評分
+        rating_ids = [rid for rid, r in data.get("ratings", {}).items() if r.get("game_id") == game_id]
+        for rid in rating_ids:
+            data["ratings"].pop(rid, None)
+        # 從開發者列表中移除
+        dev_games = data["developers"].get(developer, {}).get("games", [])
+        data["developers"][developer]["games"] = [g for g in dev_games if g != game_id]
+        # 刪除檔案
+        storage_dir = os.path.join(STORAGE_ROOT, game_id)
+        if os.path.isdir(storage_dir):
+            shutil.rmtree(storage_dir, ignore_errors=True)
+        # 最後移除遊戲
+        data["games"].pop(game_id, None)
+        return True, "已刪除遊戲"
 
     return db.update(_remove)
 

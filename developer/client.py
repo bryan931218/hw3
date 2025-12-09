@@ -80,7 +80,7 @@ def choose_local_folder() -> str:
 
 
 def fetch_games() -> list:
-    resp = requests.get(f"{SERVER_URL}/games", params={"all": "1"})
+    resp = requests.get(f"{SERVER_URL}/games")
     if resp.status_code != 200:
         print("無法取得遊戲列表")
         return []
