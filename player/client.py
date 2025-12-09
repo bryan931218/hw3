@@ -9,6 +9,7 @@ import threading
 import time
 from typing import Dict, List, Optional
 from urllib.parse import urlparse, urlunparse
+import ipaddress
 
 import requests
 
@@ -36,6 +37,10 @@ def ensure_player_dir(player: str) -> str:
     path = os.path.join(DOWNLOAD_ROOT, player)
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def clear_screen():
+    os.system("cls" if os.name == "nt" else "clear")
 
 
 def installed_path(player: str) -> str:
@@ -270,6 +275,7 @@ def room_lobby(player: str, room: Dict):
         room = fetch_room(room["id"]) or room
         status = room.get("status")
         host = room.get("host")
+        clear_screen()
         print(
             f"\n=== 房間 {room['id']} ===\n"
             f"遊戲: {room['game_id']} 版本: {room['version']}\n"
@@ -286,7 +292,11 @@ def room_lobby(player: str, room: Dict):
         if status == "finished":
             print("房間已結束")
             return
-        time.sleep(0.5)
+        # 自動每 2 秒刷新一次，同時允許立即選單操作
+        refresh_wait = 2
+        end_time = time.time() + refresh_wait
+        while time.time() < end_time:
+            time.sleep(0.25)
 
         if player == host:
             print("1) 開始遊戲  2) 重新整理  3) 離開房間")
@@ -345,9 +355,16 @@ def launch_game(player: str, room_id: str, game_id: str):
     # 避免拿到 0.0.0.0，改用平台 URL 的 host
     try:
         parsed = urlparse(gs_url)
-        if parsed.hostname in ("0.0.0.0", "127.0.0.1"):
-            platform_host = urlparse(SERVER_URL).hostname or "localhost"
-            gs_url = urlunparse((parsed.scheme, f"{platform_host}:{parsed.port}", parsed.path, "", "", ""))
+        platform_host = urlparse(SERVER_URL).hostname or "localhost"
+        # 若 game_server host 是 0.0.0.0、127.0.0.1 或私有網段，改用平台 host
+        if parsed.hostname:
+            try:
+                ip = ipaddress.ip_address(parsed.hostname)
+                if ip.is_loopback or ip.is_private:
+                    gs_url = urlunparse((parsed.scheme, f"{platform_host}:{parsed.port}", parsed.path, "", "", ""))
+            except ValueError:
+                # 不是 IP，直接使用原始 host
+                pass
     except Exception:
         pass
     print(f"啟動遊戲 {info.get('name', game_id)} (版本 {info['version']})")

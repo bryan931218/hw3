@@ -40,19 +40,16 @@ class DiceRaceGUI:
 
     def _poll_loop(self):
         while True:
-            self.root.after(0, self._poll_once)
-            time.sleep(1)
-
-    def _poll_once(self):
-        try:
-            resp = requests.get(f"{self.server}/state", params={"player": self.player}, timeout=5).json()
-            if not resp.get("success"):
-                self.status.set(resp.get("message"))
-                return
-            state = resp["data"]
-            self._render_state(state)
-        except Exception as exc:
-            self.status.set(f"同步失敗: {exc}")
+            try:
+                resp = requests.get(f"{self.server}/state", params={"player": self.player}, timeout=2).json()
+                if resp.get("success"):
+                    state = resp["data"]
+                    self.root.after(0, lambda s=state: self._render_state(s))
+                else:
+                    self.root.after(0, lambda m=resp.get("message", ""): self.status.set(m))
+            except Exception as exc:
+                self.root.after(0, lambda e=exc: self.status.set(f"同步失敗，將重試：{e}"))
+            time.sleep(2)
 
     def _render_state(self, state: Dict):
         players = state.get("players", [])
@@ -91,16 +88,17 @@ class DiceRaceGUI:
     def roll(self):
         if self.finished or self.turn_player != self.player:
             return
-        try:
-            resp = requests.post(
-                f"{self.server}/action",
-                json={"player": self.player, "action": {"type": "roll"}},
-                timeout=5,
-            ).json()
-            self.status.set(resp.get("message"))
-        except Exception as exc:
-            self.status.set(f"送出失敗: {exc}")
-        self._poll_once()
+        def _send():
+            try:
+                resp = requests.post(
+                    f"{self.server}/action",
+                    json={"player": self.player, "action": {"type": "roll"}},
+                    timeout=2,
+                ).json()
+                self.root.after(0, lambda m=resp.get("message", ""): self.status.set(m))
+            except Exception as exc:
+                self.root.after(0, lambda e=exc: self.status.set(f"送出失敗: {e}"))
+        threading.Thread(target=_send, daemon=True).start()
 
     def run(self):
         self.root.mainloop()
