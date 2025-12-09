@@ -232,7 +232,11 @@ def leave_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Opti
 
 def list_rooms(db: Database) -> List[Dict]:
     data = db.snapshot()
-    return list(data["rooms"].values())
+    # 淨空已結束的房間
+    to_delete = [rid for rid, r in data["rooms"].items() if r.get("status") == "finished"]
+    for rid in to_delete:
+        data["rooms"].pop(rid, None)
+    return [r for r in data["rooms"].values() if r.get("status") != "finished"]
 
 
 def list_players(db: Database) -> List[Dict]:
