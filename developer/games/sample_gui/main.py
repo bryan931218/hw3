@@ -176,7 +176,7 @@ def main():
         gui = TicTacToeGUI(args.game_server, args.room, args.player)
         gui.run()
     except KeyboardInterrupt:
-        pass
+        sys.exit(0)
 
 
 if __name__ == "__main__":

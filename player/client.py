@@ -21,8 +21,8 @@ SERVER_URL = os.environ.get("GAME_SERVER_URL", "http://linux1.cs.nycu.edu.tw:500
 def prompt(msg: str) -> str:
     try:
         return input(msg)
-    except EOFError:
-        return ""
+    except (EOFError, KeyboardInterrupt):
+        sys.exit(0)
 
 
 def parse_index(choice: str, total: int) -> Optional[int]:
@@ -430,10 +430,12 @@ def room_lobby(player: str, room: Dict):
             print("房間已結束")
             return
         if player == host:
-            prompt_text = "選擇 > " if needs_render else ""
-            choice = get_input_timeout(prompt_text, 2, newline_on_timeout=bool(prompt_text))
-            if choice is None:
-                continue
+            if needs_render:
+                choice = prompt("選擇 > ").strip()
+            else:
+                choice = get_input_timeout("選擇 > ", 2, newline_on_timeout=False)
+                if choice is None:
+                    continue
             if choice == "1":
                 started = start_room(player, room["id"])
                 if started:
@@ -445,10 +447,12 @@ def room_lobby(player: str, room: Dict):
             else:
                 print("請輸入 1-2")
         else:
-            prompt_text = "選擇 > " if needs_render else ""
-            choice = get_input_timeout(prompt_text, 2, newline_on_timeout=bool(prompt_text))
-            if choice is None:
-                continue
+            if needs_render:
+                choice = prompt("選擇 > ").strip()
+            else:
+                choice = get_input_timeout("選擇 > ", 2, newline_on_timeout=False)
+                if choice is None:
+                    continue
             if choice == "1":
                 leave_room(player, room["id"])
                 return

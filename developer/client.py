@@ -27,8 +27,8 @@ def zip_folder(folder_path: str) -> str:
 def prompt(msg: str) -> str:
     try:
         return input(msg)
-    except EOFError:
-        return ""
+    except (EOFError, KeyboardInterrupt):
+        sys.exit(0)
 
 
 def register() -> bool:
