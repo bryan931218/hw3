@@ -27,8 +27,6 @@ class DiceRaceGUI:
         self.turn_player = None
         self.finished = False
         self.log_list = None
-        self._last_log = None
-        self._last_roll_logged = None
         self._build_ui()
         threading.Thread(target=self._poll_loop, daemon=True).start()
 
@@ -55,9 +53,6 @@ class DiceRaceGUI:
     def _append_log(self, msg: str):
         if not self.log_list:
             return
-        if msg == self._last_log:
-            return
-        self._last_log = msg
         ts = time.strftime("%H:%M:%S")
         self.log_list.insert(tk.END, f"[{ts}] {msg}")
         self.log_list.see(tk.END)
@@ -84,16 +79,15 @@ class DiceRaceGUI:
     def _render_state(self, state: Dict):
         players = state.get("players", [])
         scores = state.get("scores", {})
-        # 依分數排序的排行榜（高到低）
-        sorted_players = sorted(players, key=lambda p: scores.get(p, 0), reverse=True)
-        # 重建排行榜（所有玩家都顯示，確保每一端一致）
-        for lbl in self.score_labels.values():
-            lbl.destroy()
-        self.score_labels.clear()
-        for idx, p in enumerate(sorted_players, 1):
-            lbl = tk.Label(self.score_area, text=f"{idx}. {p}: {scores.get(p,0)}", font=("Segoe UI", 12))
-            lbl.pack(anchor="w")
-            self.score_labels[p] = lbl
+        # 初始化分數標籤
+        if not self.score_labels and scores:
+            for p in players:
+                lbl = tk.Label(self.score_area, text=f"{p}: {scores.get(p,0)}", font=("Segoe UI", 12))
+                lbl.pack(anchor="w")
+                self.score_labels[p] = lbl
+        # 更新分數
+        for p, lbl in self.score_labels.items():
+            lbl.config(text=f"{p}: {scores.get(p,0)}")
 
         self.turn_player = players[state.get("turn_index", 0)] if players else None
         round_idx = state.get("round", 1)
@@ -123,11 +117,8 @@ class DiceRaceGUI:
         if state.get("last_roll"):
             lr = state["last_roll"]
             who, val = list(lr.items())[0]
-            msg = f"{who} 擲出 {val}"
             self.result.set(f"最新擲骰：{who} ➜ {val}")
-            if msg != self._last_roll_logged:
-                self._append_log(msg)
-                self._last_roll_logged = msg
+            self._append_log(f"{who} 擲出 {val}")
 
     def roll(self):
         if self.finished or self.turn_player != self.player:

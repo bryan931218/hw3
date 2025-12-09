@@ -68,12 +68,9 @@ def get_input_timeout(prompt_text: str, timeout: float, newline_on_timeout: bool
                         buf += ch.encode("utf-8")
                         print(ch, end="", flush=True)
                 time.sleep(0.05)
-            if newline_on_timeout and prompt_text:
-                print()
+            # 取消逾時自動換行
             return None
         except Exception:
-            if newline_on_timeout and prompt_text:
-                print()
             return None
     else:
         try:
@@ -111,6 +108,68 @@ def decode_and_extract(player: str, game_id: str, version: str, file_data: str) 
     with zipfile.ZipFile(buffer, "r") as zf:
         zf.extractall(target_dir)
     return target_dir
+
+
+def fetch_game_detail(game_id: str) -> Optional[Dict]:
+    try:
+        resp = requests.get(f"{SERVER_URL}/games/{game_id}")
+        if resp.ok:
+            return resp.json().get("data")
+    except Exception:
+        return None
+    return None
+
+
+def download_game_version(player: str, game_id: str, version: Optional[str] = None) -> bool:
+    params = {}
+    if version:
+        params["version"] = version
+    try:
+        resp = requests.get(f"{SERVER_URL}/games/{game_id}/download", params=params)
+        data = resp.json()
+        if not data.get("success"):
+            print(data.get("message", "下載失敗"))
+            return False
+        payload = data["data"]
+        extract_path = decode_and_extract(player, game_id, payload["version"], payload["file_data"])
+        installed = load_installed(player)
+        installed[game_id] = {"version": payload["version"], "path": extract_path, "name": payload.get("name", game_id)}
+        save_installed(player, installed)
+        print(f"已安裝 {game_id} 版本 {payload['version']}")
+        return True
+    except Exception as exc:
+        print(f"下載失敗: {exc}")
+        return False
+
+
+def ensure_latest_version(player: str, game_id: str, target_version: Optional[str] = None) -> bool:
+    """
+    確保玩家已安裝目標版本（若未指定則為最新版本）。必要時提示並自動下載。
+    回傳 True 代表已符合條件；False 代表使用者拒絕或失敗。
+    """
+    installed = load_installed(player)
+    detail = fetch_game_detail(game_id)
+    if not detail:
+        print("無法取得遊戲資訊，請稍後重試")
+        return False
+    latest_version = detail.get("latest_version")
+    desired = target_version or latest_version
+    name = detail.get("name", game_id)
+    local_ver = installed.get(game_id, {}).get("version")
+    if local_ver == desired:
+        return True
+    if not installed.get(game_id):
+        ans = prompt(f"尚未安裝 {name}（將安裝版本 {desired}），是否立即下載？(y/N): ").strip().lower()
+        if ans != "y":
+            print("未安裝，無法進入房間/建立房間")
+            return False
+        return download_game_version(player, game_id, desired)
+    # 已安裝但版本不同
+    ans = prompt(f"{name} 已有版本 {local_ver}，需要更新為 {desired} 才能進入，是否更新？(y/N): ").strip().lower()
+    if ans != "y":
+        print("已取消，請更新後再試")
+        return False
+    return download_game_version(player, game_id, desired)
 
 
 def register() -> bool:
@@ -222,9 +281,8 @@ def create_room(player: str):
         print("選擇無效")
         return None
     game = games[int(choice) - 1]
-    installed = load_installed(player)
-    if game["id"] not in installed:
-        print("尚未下載該遊戲，請先下載/更新後再建立房間")
+    # 確保已安裝最新版本
+    if not ensure_latest_version(player, game["id"], game.get("latest_version")):
         return None
     resp = requests.post(f"{SERVER_URL}/rooms", json={"player": player, "game_id": game["id"]})
     data = resp.json()
@@ -248,7 +306,8 @@ def list_rooms(installed_games: Optional[List[str]] = None):
     if not rooms:
         print("目前沒有房間")
     for r in rooms:
-        print(f"- 房號 {r['id']} | 遊戲 {r['game_id']} | 狀態 {r['status']} | 玩家 {len(r['players'])}")
+        max_p = r.get("max_players") or "?"
+        print(f"- 房號 {r['id']} | 遊戲 {r['game_id']} | 狀態 {r['status']} | 玩家 {len(r['players'])}/{max_p}")
     return rooms
 
 
@@ -263,7 +322,11 @@ def join_room(player: str) -> Optional[Dict]:
     data = resp.json()
     print(data.get("message"))
     if data.get("success"):
-        return data["data"]
+        room = data["data"]
+        # 確保版本符合房間指定版本
+        if not ensure_latest_version(player, room["game_id"], room.get("version")):
+            return None
+        return room
     return None
 
 
@@ -335,9 +398,9 @@ def room_lobby(player: str, room: Dict):
             print(
                 f"\n=== 房間 {room['id']} ===\n"
                 f"遊戲: {room['game_id']} 版本: {room['version']}\n"
-                f"房主: {host} | 玩家: {', '.join(room.get('players', []))}\n"
-                f"狀態: {status}"
-            )
+            f"房主: {host} | 玩家 ({len(room.get('players', []))}/{room.get('max_players','?')}): {', '.join(room.get('players', []))}\n"
+            f"狀態: {status}"
+        )
             if player == host:
                 print("1) 開始遊戲  2) 離開房間")
             else:
@@ -385,6 +448,14 @@ def launch_game(player: str, room_id: str, game_id: str):
     if not info:
         print("尚未下載遊戲")
         return
+    # 進入遊戲前再驗證版本（以房間版本為準）
+    room = fetch_room(room_id)
+    if room:
+        target_ver = room.get("version")
+        if target_ver and info.get("version") != target_ver:
+            if not ensure_latest_version(player, game_id, target_ver):
+                return
+            info = load_installed(player).get(game_id)
     path = info["path"]
     manifest = os.path.join(path, "manifest.json")
     entry = "main.py"
