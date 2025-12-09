@@ -611,106 +611,118 @@ def view_status(player: str):
 
 
 def main():
-    print("=== Lobby Client ===")
-    print(f"Server: {SERVER_URL}")
-    player = ""
-    current_room = None
-    hb_stop = threading.Event()
-    while not player:
-        print("\n1) 登入  2) 註冊  3) 離開")
-        choice = prompt("選擇: ").strip()
-        if choice == "1":
-            player = login()
-        elif choice == "2":
-            register()
-        elif choice == "3":
-            sys.exit(0)
-        else:
-            print("無效選擇")
+    try:
+        print("=== Lobby Client ===")
+        print(f"Server: {SERVER_URL}")
+        player = ""
+        current_room = None
+        hb_stop = threading.Event()
+        while not player:
+            print("\n1) 登入  2) 註冊  3) 離開")
+            choice = prompt("選擇: ").strip()
+            if choice == "1":
+                player = login()
+            elif choice == "2":
+                register()
+            elif choice == "3":
+                sys.exit(0)
+            else:
+                print("無效選擇")
 
-    # 啟動心跳，避免逾時被登出
-    start_heartbeat(player, hb_stop)
+        # 啟動心跳，避免逾時被登出
+        start_heartbeat(player, hb_stop)
 
-    while True:
-        print(
-            "\n=== 大廳主選單 ===\n"
-            "1) 商城 / 下載\n"
-            "2) 房間流程\n"
-            "3) 狀態看板\n"
-            "4) 評分與評論\n"
-            "5) 我的紀錄\n"
-            "6) 離開\n"
-        )
-        choice = prompt("選擇: ").strip()
-        if choice == "1":
-            while True:
-                print(
-                    "\n--- 商城 / 下載 ---\n"
-                    "1) 瀏覽商城\n"
-                    "2) 查看遊戲詳細\n"
-                    "3) 下載/更新遊戲\n"
-                    "4) 查看已安裝遊戲\n"
-                    "5) 返回主選單\n"
-                )
-                sub = prompt("選擇: ").strip()
-                if sub == "1":
-                    list_store_games()
-                elif sub == "2":
-                    view_game_detail()
-                elif sub == "3":
-                    download_or_update(player)
-                elif sub == "4":
-                    list_installed_games(player)
-                elif sub == "5":
-                    break
-                else:
-                    print("請輸入 1-5")
-        elif choice == "2":
-            while True:
-                print(
-                    "\n--- 房間流程 ---\n"
-                    "1) 建立房間並綁定最新版本\n"
-                    "2) 加入房間\n"
-                    "3) 啟動房間遊戲\n"
-                    "4) 查看房間列表（僅限已安裝遊戲）\n"
-                    "5) 返回主選單\n"
-                )
-                sub = prompt("選擇: ").strip()
-                if sub == "1":
-                    current_room = create_room(player)
-                    if current_room:
-                        room_lobby(player, current_room)
-                        current_room = None
-                elif sub == "2":
-                    current_room = join_room(player)
-                    if current_room:
-                        room_lobby(player, current_room)
-                        current_room = None
-                elif sub == "3":
-                    if current_room:
-                        room_lobby(player, current_room)
-                        current_room = None
+        while True:
+            print(
+                "\n=== 大廳主選單 ===\n"
+                "1) 商城 / 下載\n"
+                "2) 房間流程\n"
+                "3) 狀態看板\n"
+                "4) 評分與評論\n"
+                "5) 我的紀錄\n"
+                "6) 離開\n"
+            )
+            choice = prompt("選擇: ").strip()
+            if choice == "1":
+                while True:
+                    print(
+                        "\n--- 商城 / 下載 ---\n"
+                        "1) 瀏覽商城\n"
+                        "2) 查看遊戲詳細\n"
+                        "3) 下載/更新遊戲\n"
+                        "4) 查看已安裝遊戲\n"
+                        "5) 返回主選單\n"
+                    )
+                    sub = prompt("選擇: ").strip()
+                    if sub == "1":
+                        list_store_games()
+                    elif sub == "2":
+                        view_game_detail()
+                    elif sub == "3":
+                        download_or_update(player)
+                    elif sub == "4":
+                        list_installed_games(player)
+                    elif sub == "5":
+                        break
                     else:
-                        print("請先建立或加入房間")
-                elif sub == "4":
-                    list_rooms(list(load_installed(player).keys()))
-                elif sub == "5":
-                    break
-                else:
-                    print("請輸入 1-5")
-        elif choice == "3":
-            view_status(player)
-        elif choice == "4":
-            rate_game(player)
-        elif choice == "5":
-            view_my_profile(player)
-        elif choice == "6":
-            print("Bye")
+                        print("請輸入 1-5")
+            elif choice == "2":
+                while True:
+                    print(
+                        "\n--- 房間流程 ---\n"
+                        "1) 建立房間並綁定最新版本\n"
+                        "2) 加入房間\n"
+                        "3) 啟動房間遊戲\n"
+                        "4) 查看房間列表（僅限已安裝遊戲）\n"
+                        "5) 返回主選單\n"
+                    )
+                    sub = prompt("選擇: ").strip()
+                    if sub == "1":
+                        current_room = create_room(player)
+                        if current_room:
+                            room_lobby(player, current_room)
+                            current_room = None
+                    elif sub == "2":
+                        current_room = join_room(player)
+                        if current_room:
+                            room_lobby(player, current_room)
+                            current_room = None
+                    elif sub == "3":
+                        if current_room:
+                            room_lobby(player, current_room)
+                            current_room = None
+                        else:
+                            print("請先建立或加入房間")
+                    elif sub == "4":
+                        list_rooms(list(load_installed(player).keys()))
+                    elif sub == "5":
+                        break
+                    else:
+                        print("請輸入 1-5")
+            elif choice == "3":
+                view_status(player)
+            elif choice == "4":
+                rate_game(player)
+            elif choice == "5":
+                view_my_profile(player)
+            elif choice == "6":
+                print("Bye")
+                logout(player)
+                hb_stop.set()
+                break
+            else:
+                print("請輸入 1-6")
+    except KeyboardInterrupt:
+        print("\n收到中斷訊號，正在關閉...")
+        try:
             logout(player)
+        except Exception:
+            pass
+        try:
             hb_stop.set()
-            break
-        else:
-            print("請輸入 1-6")
+        except Exception:
+            pass
+        sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -77,17 +77,20 @@ def play_network(server: str, room: str, player: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sample CLI dice duel")
-    parser.add_argument("--player", default="", help="當前玩家名稱（由大廳客戶端傳入）")
-    parser.add_argument("--server", default="", help="平台伺服器位址（未使用）")
-    parser.add_argument("--game-server", default="", help="遊戲伺服器位址（由平台提供）")
-    parser.add_argument("--room", default="", help="房間 ID")
-    args = parser.parse_args()
-    game_server = args.game_server or args.server
-    if not game_server or not args.room or not args.player:
-        print("缺少參數，請由大廳客戶端啟動")
-        return
-    play_network(game_server, args.room, args.player)
+    try:
+        parser = argparse.ArgumentParser(description="Sample CLI dice duel")
+        parser.add_argument("--player", default="", help="當前玩家名稱（由大廳客戶端傳入）")
+        parser.add_argument("--server", default="", help="平台伺服器位址（未使用）")
+        parser.add_argument("--game-server", default="", help="遊戲伺服器位址（由平台提供）")
+        parser.add_argument("--room", default="", help="房間 ID")
+        args = parser.parse_args()
+        game_server = args.game_server or args.server
+        if not game_server or not args.room or not args.player:
+            print("缺少參數，請由大廳客戶端啟動")
+            return
+        play_network(game_server, args.room, args.player)
+    except KeyboardInterrupt:
+        print("\n遊戲中斷，返回大廳")
 
 
 if __name__ == "__main__":

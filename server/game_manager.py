@@ -203,6 +203,9 @@ def join_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optio
         game = data["games"].get(room["game_id"])
         if not game or not game.get("active", True):
             return False, "遊戲不可用", None
+        # 補齊人數上限/下限資訊
+        room.setdefault("max_players", game.get("max_players"))
+        room.setdefault("min_players", game.get("min_players"))
         if player not in data["players"]:
             return False, "玩家不存在", None
         if player in room["players"]:
@@ -248,9 +251,29 @@ def list_rooms(db: Database) -> List[Dict]:
         ]
         for rid in to_delete:
             data["rooms"].pop(rid, None)
-        return list(data["rooms"].values())
+        rooms = []
+        for rid, r in data["rooms"].items():
+            game = data["games"].get(r.get("game_id"), {})
+            if "max_players" not in r and game.get("max_players") is not None:
+                r["max_players"] = game.get("max_players")
+            if "min_players" not in r and game.get("min_players") is not None:
+                r["min_players"] = game.get("min_players")
+            rooms.append(r)
+        return rooms
 
     return db.update(_clean)
+
+
+def get_room(db: Database, room_id: str) -> Optional[Dict]:
+    data = db.snapshot()
+    room = data["rooms"].get(room_id)
+    if not room:
+        return None
+    game = data["games"].get(room.get("game_id"), {})
+    room = dict(room)
+    room.setdefault("max_players", game.get("max_players"))
+    room.setdefault("min_players", game.get("min_players"))
+    return room
 
 
 def list_players(db: Database) -> List[Dict]:
@@ -279,6 +302,8 @@ def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Opti
         game = data["games"].get(room["game_id"])
         if not game:
             return False, "遊戲不存在", None
+        room.setdefault("max_players", game.get("max_players"))
+        room.setdefault("min_players", game.get("min_players"))
         if room["status"] != "waiting":
             return False, "遊戲已開始", room
         if player != room.get("host"):

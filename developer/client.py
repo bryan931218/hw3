@@ -198,49 +198,61 @@ def view_games(dev_name: str):
 
 
 def main():
-    print("=== Developer Client ===")
-    print(f"Server: {SERVER_URL}")
-    dev = ""
-    hb_stop = threading.Event()
-    while not dev:
-        print("\n1) 登入  2) 註冊  3) 離開")
-        choice = prompt("選擇: ").strip()
-        if choice == "1":
-            dev = login()
-        elif choice == "2":
-            register()
-        elif choice == "3":
-            sys.exit(0)
-        else:
-            print("無效選擇")
+    try:
+        print("=== Developer Client ===")
+        print(f"Server: {SERVER_URL}")
+        dev = ""
+        hb_stop = threading.Event()
+        while not dev:
+            print("\n1) 登入  2) 註冊  3) 離開")
+            choice = prompt("選擇: ").strip()
+            if choice == "1":
+                dev = login()
+            elif choice == "2":
+                register()
+            elif choice == "3":
+                sys.exit(0)
+            else:
+                print("無效選擇")
 
-    start_heartbeat(dev, hb_stop)
+        start_heartbeat(dev, hb_stop)
 
-    while True:
-        print(
-            "\n=== 開發者主選單 ===\n"
-            "1) 我的遊戲\n"
-            "2) 上架新遊戲\n"
-            "3) 更新版本\n"
-            "4) 下架遊戲\n"
-            "5) 登出並離開\n"
-        )
-        choice = prompt("選擇: ").strip()
-        if choice == "1":
-            view_games(dev)
-        elif choice == "2":
-            upload_game_flow(dev)
-        elif choice == "3":
-            update_game_flow(dev)
-        elif choice == "4":
-            remove_game_flow(dev)
-        elif choice == "5":
-            print("Bye")
+        while True:
+            print(
+                "\n=== 開發者主選單 ===\n"
+                "1) 我的遊戲\n"
+                "2) 上架新遊戲\n"
+                "3) 更新版本\n"
+                "4) 下架遊戲\n"
+                "5) 登出並離開\n"
+            )
+            choice = prompt("選擇: ").strip()
+            if choice == "1":
+                view_games(dev)
+            elif choice == "2":
+                upload_game_flow(dev)
+            elif choice == "3":
+                update_game_flow(dev)
+            elif choice == "4":
+                remove_game_flow(dev)
+            elif choice == "5":
+                print("Bye")
+                logout(dev)
+                hb_stop.set()
+                break
+            else:
+                print("無效選擇，請重新輸入")
+    except KeyboardInterrupt:
+        print("\n收到中斷訊號，正在關閉...")
+        try:
             logout(dev)
+        except Exception:
+            pass
+        try:
             hb_stop.set()
-            break
-        else:
-            print("無效選擇，請重新輸入")
+        except Exception:
+            pass
+        sys.exit(0)
 
 
 if __name__ == "__main__":

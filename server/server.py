@@ -155,8 +155,7 @@ def rooms():
 
 @app.route("/rooms/<room_id>", methods=["GET"])
 def room_detail(room_id):
-    rooms = game_manager.list_rooms(db)
-    match = next((r for r in rooms if r["id"] == room_id), None)
+    match = game_manager.get_room(db, room_id)
     if not match:
         return _resp(False, "房間不存在", status=404)
     return _resp(True, "ok", match)
