@@ -231,7 +231,7 @@ def player_info(db: Database, player: str) -> Optional[Dict]:
     return {"name": player, "played_games": played, "ratings": given_ratings}
 
 
-def start_room(db: Database, room_id: str) -> Tuple[bool, str, Optional[Dict]]:
+def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Optional[Dict]]:
     def _start(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
         room = data["rooms"].get(room_id)
         if not room:
@@ -241,6 +241,8 @@ def start_room(db: Database, room_id: str) -> Tuple[bool, str, Optional[Dict]]:
             return False, "遊戲不存在", None
         if room["status"] != "waiting":
             return False, "遊戲已開始", room
+        if player != room.get("host"):
+            return False, "只有房主可開始遊戲", None
         if len(room["players"]) < game["min_players"]:
             return False, "人數不足", None
         # 啟動對應遊戲的獨立 game server（若 manifest 指定 server_entry）

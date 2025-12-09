@@ -39,6 +39,16 @@ def dev_logout():
     return _resp(True, "已登出")
 
 
+@app.route("/dev/heartbeat", methods=["POST"])
+def dev_heartbeat():
+    body = request.get_json() or {}
+    username = body.get("username", "")
+    if not auth.is_logged_in("developer", username):
+        return _resp(False, "未登入", status=401)
+    auth.heartbeat("developer", username)
+    return _resp(True, "ok")
+
+
 @app.route("/player/register", methods=["POST"])
 def player_register():
     body = request.get_json() or {}
@@ -192,7 +202,12 @@ def join_room(room_id):
 
 @app.route("/rooms/<room_id>/start", methods=["POST"])
 def start_room(room_id):
-    ok, msg, data = game_manager.start_room(db, room_id)
+    body = request.get_json() or {}
+    player = body.get("player", "")
+    if not auth.is_logged_in("player", player):
+        return _resp(False, "請先登入玩家帳號", status=401)
+    auth.heartbeat("player", player)
+    ok, msg, data = game_manager.start_room(db, room_id, player)
     return _resp(ok, msg, data, status=200 if ok else 400)
 
 

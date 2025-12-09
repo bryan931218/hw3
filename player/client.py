@@ -5,12 +5,14 @@ import os
 import subprocess
 import sys
 import zipfile
+import threading
+import time
 from typing import Dict, List, Optional
 
 import requests
 
 DOWNLOAD_ROOT = os.path.join(os.path.dirname(__file__), "downloads")
-SERVER_URL = os.environ.get("GAME_SERVER_URL", "http://127.0.0.1:5000")
+SERVER_URL = os.environ.get("GAME_SERVER_URL", "http://linux1.cs.nycu.edu.tw:5000")
 
 
 def prompt(msg: str) -> str:
@@ -216,8 +218,8 @@ def join_room(player: str) -> Optional[Dict]:
     return None
 
 
-def start_room(room_id: str) -> Optional[Dict]:
-    resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/start")
+def start_room(player: str, room_id: str) -> Optional[Dict]:
+    resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/start", json={"player": player})
     data = resp.json()
     print(data.get("message"))
     if data.get("success"):
@@ -234,6 +236,69 @@ def close_room(player: str, room_id: str):
     except Exception as exc:
         print(f"關閉房間失敗: {exc}")
         return False
+
+
+def fetch_room(room_id: str) -> Optional[Dict]:
+    try:
+        resp = requests.get(f"{SERVER_URL}/rooms/{room_id}")
+        if resp.ok:
+            return resp.json().get("data")
+    except Exception:
+        return None
+    return None
+
+
+def room_lobby(player: str, room: Dict):
+    """
+    房間內的選單：房主可開始遊戲；其他人等待開始。
+    若狀態變為 in_game 則自動進入遊戲。
+    """
+    launched = False
+    while True:
+        room = fetch_room(room["id"]) or room
+        status = room.get("status")
+        host = room.get("host")
+        print(
+            f"\n=== 房間 {room['id']} ===\n"
+            f"遊戲: {room['game_id']} 版本: {room['version']}\n"
+            f"房主: {host} | 玩家: {', '.join(room.get('players', []))}\n"
+            f"狀態: {status}"
+        )
+        if status == "in_game" and not launched:
+            launched = True
+            launch_game(player, room["id"], room["game_id"])
+            # 非房主不關房間，由房主在遊戲後關閉
+            if player == host:
+                close_room(player, room["id"])
+            return
+        if status == "finished":
+            print("房間已結束")
+            return
+
+        if player == host:
+            print("1) 開始遊戲  2) 重新整理  3) 離開房間")
+            choice = prompt("選擇: ").strip()
+            if choice == "1":
+                started = start_room(player, room["id"])
+                if started:
+                    room = started
+                continue
+            elif choice == "2":
+                continue
+            elif choice == "3":
+                close_room(player, room["id"])
+                return
+            else:
+                print("請輸入 1-3")
+        else:
+            print("1) 重新整理  2) 離開房間")
+            choice = prompt("選擇: ").strip()
+            if choice == "1":
+                continue
+            elif choice == "2":
+                return
+            else:
+                print("請輸入 1-2")
 
 
 def launch_game(player: str, room_id: str, game_id: str):
@@ -304,6 +369,20 @@ def logout(player: str):
         pass
 
 
+def start_heartbeat(player: str, stop_event: threading.Event, interval: int = 60):
+    def _beat():
+        while not stop_event.is_set():
+            try:
+                requests.post(f"{SERVER_URL}/player/heartbeat", json={"username": player})
+            except Exception:
+                pass
+            stop_event.wait(interval)
+
+    t = threading.Thread(target=_beat, daemon=True)
+    t.start()
+    return t
+
+
 def view_my_profile(player: str):
     resp = requests.get(f"{SERVER_URL}/player/me", params={"username": player})
     if not resp.ok:
@@ -368,6 +447,7 @@ def main():
     print(f"Server: {SERVER_URL}")
     player = ""
     current_room = None
+    hb_stop = threading.Event()
     while not player:
         print("\n1) 登入  2) 註冊  3) 離開")
         choice = prompt("選擇: ").strip()
@@ -379,6 +459,9 @@ def main():
             sys.exit(0)
         else:
             print("無效選擇")
+
+    # 啟動心跳，避免逾時被登出
+    start_heartbeat(player, hb_stop)
 
     while True:
         print(
@@ -427,23 +510,20 @@ def main():
                 sub = prompt("選擇: ").strip()
                 if sub == "1":
                     current_room = create_room(player)
+                    if current_room:
+                        room_lobby(player, current_room)
+                        current_room = None
                 elif sub == "2":
                     current_room = join_room(player)
-                elif sub == "3":
-                    if not current_room:
-                        print("請先建立或加入房間")
-                        continue
-                    installed = load_installed(player)
-                    if current_room["game_id"] not in installed:
-                        print("尚未下載該遊戲，請先執行下載/更新")
-                        continue
-                    started = start_room(current_room["id"])
-                    if started:
-                        current_room = started
-                        launch_game(player, current_room["id"], current_room["game_id"])
-                        # 遊戲結束後關閉房間
-                        close_room(player, current_room["id"])
+                    if current_room:
+                        room_lobby(player, current_room)
                         current_room = None
+                elif sub == "3":
+                    if current_room:
+                        room_lobby(player, current_room)
+                        current_room = None
+                    else:
+                        print("請先建立或加入房間")
                 elif sub == "4":
                     list_rooms(list(load_installed(player).keys()))
                 elif sub == "5":
@@ -459,6 +539,7 @@ def main():
         elif choice == "6":
             print("Bye")
             logout(player)
+            hb_stop.set()
             break
         else:
             print("請輸入 1-6")

@@ -4,6 +4,8 @@ import json
 import os
 import sys
 import zipfile
+import threading
+import time
 
 import requests
 
@@ -169,6 +171,20 @@ def logout(dev_name: str):
         pass
 
 
+def start_heartbeat(dev: str, stop_event: threading.Event, interval: int = 60):
+    def _beat():
+        while not stop_event.is_set():
+            try:
+                requests.post(f"{SERVER_URL}/dev/heartbeat", json={"username": dev})
+            except Exception:
+                pass
+            stop_event.wait(interval)
+
+    t = threading.Thread(target=_beat, daemon=True)
+    t.start()
+    return t
+
+
 def view_games(dev_name: str):
     games = [g for g in fetch_games() if g["developer"] == dev_name]
     if not games:
@@ -184,6 +200,7 @@ def main():
     print("=== Developer Client ===")
     print(f"Server: {SERVER_URL}")
     dev = ""
+    hb_stop = threading.Event()
     while not dev:
         print("\n1) 登入  2) 註冊  3) 離開")
         choice = prompt("選擇: ").strip()
@@ -195,6 +212,8 @@ def main():
             sys.exit(0)
         else:
             print("無效選擇")
+
+    start_heartbeat(dev, hb_stop)
 
     while True:
         print(
@@ -217,6 +236,7 @@ def main():
         elif choice == "5":
             print("Bye")
             logout(dev)
+            hb_stop.set()
             break
         else:
             print("無效選擇，請重新輸入")
