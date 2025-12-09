@@ -430,13 +430,13 @@ def room_lobby(player: str, room: Dict):
         if status == "finished":
             print("房間已結束")
             return
+        # 非阻塞輸入，每 2 秒自動刷新一次狀態；只在畫面刷新時顯示提示字
+        if needs_render:
+            print("選擇 > ", end="", flush=True)
+        choice = get_input_timeout("", 2, newline_on_timeout=False)
+        if choice is None:
+            continue
         if player == host:
-            if needs_render:
-                choice = prompt("選擇 > ").strip()
-            else:
-                choice = get_input_timeout("選擇 > ", 2, newline_on_timeout=False)
-                if choice is None:
-                    continue
             if choice == "1":
                 started = start_room(player, room["id"])
                 if started:
@@ -448,12 +448,6 @@ def room_lobby(player: str, room: Dict):
             else:
                 print("請輸入 1-2")
         else:
-            if needs_render:
-                choice = prompt("選擇 > ").strip()
-            else:
-                choice = get_input_timeout("選擇 > ", 2, newline_on_timeout=False)
-                if choice is None:
-                    continue
             if choice == "1":
                 leave_room(player, room["id"])
                 return

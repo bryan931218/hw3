@@ -25,6 +25,17 @@ def _save_game_blob(game_id: str, version: str, file_data_b64: str) -> str:
     return path
 
 
+def reset_rooms(db: Database) -> Tuple[bool, str]:
+    def _reset(data: Dict) -> Tuple[bool, str]:
+        for rid in list(data.get("rooms", {}).keys()):
+            game_runtime.stop_game_server(rid)
+        data["rooms"] = {}
+        data.setdefault("next_ids", {}).setdefault("room", 1)
+        return True, "已清空房間"
+
+    return db.update(_reset)
+
+
 def create_game(
     db: Database,
     developer: str,
@@ -236,17 +247,14 @@ def leave_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Opti
             return False, "房間不存在", None
         if player not in room["players"]:
             return False, "不在此房間", None
+        # 任何玩家離開都結束房間並通知其餘玩家回大廳（避免留在遊戲中）
         room["players"] = [p for p in room["players"] if p != player]
-        # 若房主離開或房間無人，直接結束房間並關閉 game server
-        if player == room.get("host") or not room["players"]:
-            room["status"] = "finished"
-            room["ended_at"] = int(time.time())
-            game_runtime.stop_game_server(room_id)
-            closed = dict(room)
-            data["rooms"].pop(room_id, None)
-            return True, "房間已關閉", closed
-        # 若仍有人，保留房間等待狀態
-        return True, "已離開房間", room
+        room["status"] = "finished"
+        room["ended_at"] = int(time.time())
+        game_runtime.stop_game_server(room_id)
+        closed = dict(room)
+        data["rooms"].pop(room_id, None)
+        return True, "房間已關閉", closed
 
     return db.update(_leave)
 

@@ -83,18 +83,8 @@ class TicTacToeGUI:
         self.log_list.insert(tk.END, f"[{ts}] {msg}")
         self.log_list.see(tk.END)
 
-    def _maybe_close_room(self):
-        if self.closed:
-            return
-        try:
-            requests.post(f"{self.platform_server}/rooms/{self.room}/close", json={"player": self.player}, timeout=2)
-        except Exception:
-            pass
-        self.closed = True
-
     def _end_with_message(self, msg: str):
         self.status.set(msg)
-        self._maybe_close_room()
         try:
             messagebox.showinfo("遊戲結束", msg)
         except Exception:
@@ -103,6 +93,7 @@ class TicTacToeGUI:
             self.root.destroy()
         except Exception:
             pass
+        self._leave_room()
 
     def handle_click(self, r: int, c: int):
         if self.finished or self.turn_player != self.player:
@@ -159,7 +150,10 @@ class TicTacToeGUI:
         if state.get("status") == "finished":
             self.finished = True
             winners = state.get("winner", [])
-            if not winners:
+            if winners is None:
+                self.status.set("有玩家離開，遊戲中止")
+                self._append_log("有玩家離開，遊戲中止")
+            elif not winners:
                 self.status.set("平手")
                 self._append_log("平手，遊戲結束")
             elif self.player in winners:
@@ -168,7 +162,6 @@ class TicTacToeGUI:
             else:
                 self.status.set(f"勝者: {', '.join(winners)}")
                 self._append_log(f"勝者: {', '.join(winners)}")
-            self._maybe_close_room()
         else:
             self.finished = False
             turn_idx = state.get("turn_index", 0)
@@ -188,7 +181,17 @@ class TicTacToeGUI:
 
     def run(self):
         self.root.mainloop()
-        self._maybe_close_room()
+        self._leave_room()
+
+    def _leave_room(self):
+        if not self.platform_server or not self.room or not self.player:
+            return
+        try:
+            requests.post(
+                f"{self.platform_server}/rooms/{self.room}/leave", json={"player": self.player}, timeout=2
+            )
+        except Exception:
+            pass
 
 
 def main():
@@ -202,7 +205,7 @@ def main():
         gui = TicTacToeGUI(args.game_server, args.room, args.player, args.server)
         gui.run()
     except KeyboardInterrupt:
-        sys.exit(0)
+        return
 
 
 if __name__ == "__main__":

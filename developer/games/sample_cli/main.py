@@ -13,7 +13,7 @@ def get_state(server: str, room: str, player: str) -> Dict:
         resp = requests.get(f"{server}/state", params={"player": player}, timeout=2)
         return resp.json()
     except Exception as exc:
-        return {"success": False, "message": f"連線中斷：{exc}"}
+        return {"success": False, "message": "連線中斷，請稍後再試"}
 
 
 def act_roll(server: str, room: str, player: str) -> Dict:
@@ -23,12 +23,12 @@ def act_roll(server: str, room: str, player: str) -> Dict:
         )
         return resp.json()
     except Exception as exc:
-        return {"success": False, "message": f"連線中斷：{exc}"}
+        return {"success": False, "message": "連線中斷，請稍後再試"}
 
 
-def close_room_platform(platform_server: str, room_id: str, player: str):
+def leave_room_platform(platform_server: str, room_id: str, player: str):
     try:
-        requests.post(f"{platform_server}/rooms/{room_id}/close", json={"player": player}, timeout=2)
+        requests.post(f"{platform_server}/rooms/{room_id}/leave", json={"player": player}, timeout=2)
     except Exception:
         pass
 
@@ -39,13 +39,19 @@ def clear_screen():
 
 def play_network(server: str, platform_server: str, room: str, player: str):
     last_snapshot = None
+    fail_count = 0
     while True:
         state_resp = get_state(server, room, player)
         if not state_resp.get("success"):
-            print(state_resp.get("message"))
-            close_room_platform(platform_server, room, player)
-            input("遊戲結束，按 Enter 返回大廳")
-            return
+            fail_count += 1
+            if fail_count >= 3:
+                print("連線中斷，返回大廳")
+                leave_room_platform(platform_server, room, player)
+                input("按 Enter 返回大廳")
+                return
+            time.sleep(1)
+            continue
+        fail_count = 0
         state = state_resp["data"]
         status = state.get("status")
         scores = state.get("scores", {})
@@ -89,11 +95,14 @@ def play_network(server: str, platform_server: str, room: str, player: str):
                 print(f"比分   ➜ {score_line}")
             if status == "finished":
                 winners = state.get("winner", [])
-                if not winners:
-                    print("平手！")
+                if winners is not None:
+                    if not winners:
+                        print("平手！")
+                    else:
+                        print(f"勝者: {', '.join(winners)}")
                 else:
-                    print(f"勝者: {', '.join(winners)}")
-                close_room_platform(platform_server, room, player)
+                    print("有玩家離開，遊戲中止。")
+                leave_room_platform(platform_server, room, player)
                 input("遊戲結束，按 Enter 返回大廳")
                 return
             if status == "waiting":
@@ -112,6 +121,29 @@ def play_network(server: str, platform_server: str, room: str, player: str):
             continue
         input()  # 輪到自己時才等待輸入
         roll_resp = act_roll(server, room, player)
+        if roll_resp.get("success") and roll_resp.get("data", {}).get("status") == "finished":
+            state = roll_resp["data"]
+            winners = state.get("winner", [])
+            clear_screen()
+            print(
+                "\n============================\n"
+                "   🎲 雙人骰子對戰（線上同步）\n"
+                "============================"
+            )
+            print("玩法：輪到自己時按 Enter 擲骰，三回合後分數高者獲勝。")
+            score_line = " | ".join([f"{p}: {state['scores'].get(p,0)}" for p in state.get("players", [])])
+            print(f"\n─── 回合 {state.get('round')}/{state.get('max_rounds',3)} ───")
+            if state.get("last_roll"):
+                who, val = list(state["last_roll"].items())[0]
+                print(f"最新擲骰 ➜ {who}: {val}")
+            print(f"比分   ➜ {score_line}")
+            if winners:
+                print(f"勝者: {', '.join(winners)}")
+            else:
+                print("平手！")
+            leave_room_platform(platform_server, room, player)
+            input("遊戲結束，按 Enter 返回大廳")
+            return
         print(roll_resp.get("message"))
         time.sleep(0.5)
 
@@ -129,7 +161,11 @@ def main():
             return
         play_network(game_server, args.server, args.room, args.player)
     except KeyboardInterrupt:
-        sys.exit(0)
+        try:
+            leave_room_platform(args.server, args.room, args.player)
+        except Exception:
+            pass
+        return
 
 
 if __name__ == "__main__":

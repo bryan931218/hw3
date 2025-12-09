@@ -62,24 +62,25 @@ def do_action():
     roll_val = random.randint(1, 6) + random.randint(1, 6)
     state["last_roll"] = {player: roll_val}
     state["rolls"][player] = roll_val
+    # 每次擲骰即累計分數，讓比分即時更新
+    state["scores"][player] = state["scores"].get(player, 0) + roll_val
+    message = "已擲骰"
     if len(state["rolls"]) == 2:
-        p1, p2 = state["players"]
-        if state["rolls"][p1] > state["rolls"][p2]:
-            state["scores"][p1] += 1
-        elif state["rolls"][p2] > state["rolls"][p1]:
-            state["scores"][p2] += 1
         state["rolls"] = {}
+        # 回合結束時才推進 round，並在達到 max_rounds 立即結算
+        if state["round"] >= state["max_rounds"]:
+            max_score = max(state["scores"].values())
+            winners = [p for p, s in state["scores"].items() if s == max_score]
+            state["winner"] = winners
+            state["status"] = "finished"
+            state["turn_index"] = 0
+            return jsonify({"success": True, "message": "遊戲結束", "data": state})
         state["round"] += 1
         state["turn_index"] = 0
+        message = "回合結束，下一回合開始"
     else:
         state["turn_index"] = 1
-    if state["round"] > state["max_rounds"]:
-        max_score = max(state["scores"].values())
-        winners = [p for p, s in state["scores"].items() if s == max_score]
-        state["winner"] = winners
-        state["status"] = "finished"
-        return jsonify({"success": True, "message": "遊戲結束", "data": state})
-    return jsonify({"success": True, "message": "已擲骰", "data": state})
+    return jsonify({"success": True, "message": message, "data": state})
 
 
 def main():

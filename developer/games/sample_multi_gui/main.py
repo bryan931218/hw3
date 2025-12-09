@@ -107,7 +107,10 @@ class DiceRaceGUI:
             self.finished = True
             self.roll_btn.config(state=tk.DISABLED)
             winners = state.get("winner", [])
-            if not winners:
+            if winners is None:
+                self.status.set("有玩家離開，遊戲中止")
+                self._append_log("有玩家離開，遊戲中止")
+            elif not winners:
                 self.status.set("平手")
                 self._append_log("平手")
             elif self.player in winners:
@@ -116,7 +119,6 @@ class DiceRaceGUI:
             else:
                 self.status.set(f"勝者: {', '.join(winners)}")
                 self._append_log(f"勝者: {', '.join(winners)}")
-            self._maybe_close_room()
         else:
             your_turn = " (你的回合)" if self.turn_player == self.player else ""
             self.status.set(f"輪到 {self.turn_player}{your_turn}")
@@ -152,20 +154,24 @@ class DiceRaceGUI:
 
     def run(self):
         self.root.mainloop()
-        self._maybe_close_room()
+        self._leave_room()
 
     def _maybe_close_room(self):
-        if getattr(self, "closed", False):
+        # 保留函式但不自動關閉房間，交由平台端統一管理
+        return
+
+    def _leave_room(self):
+        if not self.platform_server or not self.room or not self.player:
             return
         try:
-            requests.post(f"{self.platform_server}/rooms/{self.room}/close", json={"player": self.player}, timeout=2)
+            requests.post(
+                f"{self.platform_server}/rooms/{self.room}/leave", json={"player": self.player}, timeout=2
+            )
         except Exception:
             pass
-        self.closed = True
 
     def _end_with_message(self, msg: str):
         self.status.set(msg)
-        self._maybe_close_room()
         try:
             messagebox.showinfo("遊戲結束", msg)
         except Exception:
@@ -174,6 +180,7 @@ class DiceRaceGUI:
             self.root.destroy()
         except Exception:
             pass
+        self._leave_room()
 
 
 def main():
@@ -187,7 +194,7 @@ def main():
         gui = DiceRaceGUI(args.game_server, args.room, args.player, args.server)
         gui.run()
     except KeyboardInterrupt:
-        sys.exit(0)
+        return
 
 
 if __name__ == "__main__":

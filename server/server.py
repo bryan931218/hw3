@@ -7,6 +7,12 @@ from .database import Database
 db = Database(os.path.join(os.path.dirname(__file__), "data.json"))
 app = Flask(__name__)
 
+# 開機時清空所有舊有房間，避免殘留佔用
+try:
+    game_manager.reset_rooms(db)
+except Exception:
+    pass
+
 
 def _resp(ok: bool, message: str, data=None, status: int = 200):
     code = status
