@@ -389,7 +389,11 @@ def room_lobby(player: str, room: Dict):
     launched = False
     last_view = None
     while True:
-        room = fetch_room(room["id"]) or room
+        latest = fetch_room(room["id"])
+        if not latest:
+            print("房間已關閉或不存在")
+            return
+        room = latest
         if room.get("max_players") in (None, 0, "?"):
             detail = fetch_game_detail(room.get("game_id"))
             if detail and detail.get("max_players"):
@@ -422,9 +426,6 @@ def room_lobby(player: str, room: Dict):
         if status == "in_game" and not launched:
             launched = True
             launch_game(player, room["id"], room["game_id"])
-            # 非房主不關房間，由房主在遊戲後關閉
-            if player == host:
-                close_room(player, room["id"])
             return
         if status == "finished":
             print("房間已結束")
