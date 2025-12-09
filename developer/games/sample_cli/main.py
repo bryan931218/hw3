@@ -25,16 +25,25 @@ def act_roll(server: str, room: str, player: str) -> Dict:
         return {"success": False, "message": f"連線中斷：{exc}"}
 
 
+def close_room_platform(platform_server: str, room_id: str, player: str):
+    try:
+        requests.post(f"{platform_server}/rooms/{room_id}/close", json={"player": player}, timeout=2)
+    except Exception:
+        pass
+
+
 def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 
-def play_network(server: str, room: str, player: str):
+def play_network(server: str, platform_server: str, room: str, player: str):
     last_snapshot = None
     while True:
         state_resp = get_state(server, room, player)
         if not state_resp.get("success"):
             print(state_resp.get("message"))
+            close_room_platform(platform_server, room, player)
+            input("遊戲結束，按 Enter 返回大廳")
             return
         state = state_resp["data"]
         status = state.get("status")
@@ -83,6 +92,8 @@ def play_network(server: str, room: str, player: str):
                     print("平手！")
                 else:
                     print(f"勝者: {', '.join(winners)}")
+                close_room_platform(platform_server, room, player)
+                input("遊戲結束，按 Enter 返回大廳")
                 return
             if status == "waiting":
                 print("等待另一位玩家加入中...")
@@ -115,7 +126,7 @@ def main():
         game_server = args.game_server or args.server
         if not game_server or not args.room or not args.player:
             return
-        play_network(game_server, args.room, args.player)
+        play_network(game_server, args.server, args.room, args.player)
     except KeyboardInterrupt:
         sys.exit(0)
 

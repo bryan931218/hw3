@@ -1,9 +1,0 @@
-{
-  "name": "GUI Dice Race 3P",
-  "entry": "main.py",
-  "type": "gui",
-  "description": "三人以上 GUI 骰子賽跑，輪流擲骰累計分數",
-  "max_players": 4,
-  "min_players": 3,
-  "server_entry": "server.py"
-}

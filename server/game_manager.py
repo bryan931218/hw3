@@ -4,6 +4,7 @@ import re
 import shutil
 import time
 from typing import Dict, List, Optional, Tuple
+import requests
 
 from .database import Database
 from . import game_runtime
@@ -335,6 +336,18 @@ def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Opti
             public_host = os.environ.get("GAME_SERVER_PUBLIC_HOST", os.environ.get("HOST", "127.0.0.1"))
             public_port = os.environ.get("PORT", "5000")
             room["game_server"] = {"host": public_host, "port": public_port}
+        # 預先註冊房間內所有玩家到 game server，避免只有房主進入遊戲
+        try:
+            host = room["game_server"]["host"]
+            port = room["game_server"]["port"]
+            base = f"http://{host}:{port}"
+            for p in room["players"]:
+                try:
+                    requests.get(f"{base}/state", params={"player": p}, timeout=1)
+                except Exception:
+                    pass
+        except Exception:
+            pass
         for p in room["players"]:
             _mark_played(data, p, room["game_id"])
         return True, "遊戲開始", room

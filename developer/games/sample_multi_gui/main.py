@@ -7,16 +7,18 @@ import argparse
 import threading
 import time
 import tkinter as tk
+from tkinter import messagebox
 from typing import Dict
 
 import requests
 
 
 class DiceRaceGUI:
-    def __init__(self, server_base: str, room: str, player: str):
+    def __init__(self, server_base: str, room: str, player: str, platform_server: str):
         self.server = server_base.rstrip("/")
         self.room = room
         self.player = player
+        self.platform_server = platform_server.rstrip("/")
         self.root = tk.Tk()
         self.root.title(f"Dice Race - {player}")
         self.root.geometry("460x520")
@@ -29,6 +31,7 @@ class DiceRaceGUI:
         self.log_list = None
         self._last_log = None
         self._last_roll_logged = None
+        self.closed = False
         self._build_ui()
         threading.Thread(target=self._poll_loop, daemon=True).start()
 
@@ -76,7 +79,7 @@ class DiceRaceGUI:
             except Exception as exc:
                 fail_count += 1
                 if self.finished and fail_count >= 2:
-                    self.root.after(0, lambda: self.status.set("連線結束，返回大廳"))
+                    self._end_with_message("連線中斷，返回大廳")
                     break
                 self.root.after(0, lambda e=exc: self.status.set(f"同步失敗，將重試：{e}"))
             time.sleep(2)
@@ -113,6 +116,7 @@ class DiceRaceGUI:
             else:
                 self.status.set(f"勝者: {', '.join(winners)}")
                 self._append_log(f"勝者: {', '.join(winners)}")
+            self._maybe_close_room()
         else:
             your_turn = " (你的回合)" if self.turn_player == self.player else ""
             self.status.set(f"輪到 {self.turn_player}{your_turn}")
@@ -148,17 +152,39 @@ class DiceRaceGUI:
 
     def run(self):
         self.root.mainloop()
+        self._maybe_close_room()
+
+    def _maybe_close_room(self):
+        if getattr(self, "closed", False):
+            return
+        try:
+            requests.post(f"{self.platform_server}/rooms/{self.room}/close", json={"player": self.player}, timeout=2)
+        except Exception:
+            pass
+        self.closed = True
+
+    def _end_with_message(self, msg: str):
+        self.status.set(msg)
+        self._maybe_close_room()
+        try:
+            messagebox.showinfo("遊戲結束", msg)
+        except Exception:
+            pass
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
 
 
 def main():
     try:
         parser = argparse.ArgumentParser()
         parser.add_argument("--player", required=True)
-        parser.add_argument("--server", required=True, help="平台伺服器（未使用）")
+        parser.add_argument("--server", required=True, help="平台伺服器（用於關閉房間）")
         parser.add_argument("--game-server", required=True, help="遊戲伺服器位址")
         parser.add_argument("--room", required=True)
         args = parser.parse_args()
-        gui = DiceRaceGUI(args.game_server, args.room, args.player)
+        gui = DiceRaceGUI(args.game_server, args.room, args.player, args.server)
         gui.run()
     except KeyboardInterrupt:
         sys.exit(0)

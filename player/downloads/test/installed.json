@@ -1,44 +1,4 @@
 {
-  "test": {
-    "version": "1.0.0",
-    "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\player\\downloads\\test\\test\\1.0.0",
-    "name": "test"
-  },
-  "gui-game": {
-    "version": "1.0.0",
-    "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\player\\downloads\\test\\gui-game\\1.0.0",
-    "name": "GUI_game"
-  },
-  "gui": {
-    "version": "1.1",
-    "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\player\\downloads\\test\\gui\\1.1",
-    "name": "GUI"
-  },
-  "game2": {
-    "version": "1.0",
-    "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\player\\downloads\\test\\game2\\1.0",
-    "name": "game2"
-  },
-  "new": {
-    "version": "1.1",
-    "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\player\\downloads\\test\\new\\1.1",
-    "name": "new"
-  },
-  "basic": {
-    "version": "1",
-    "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\player\\downloads\\test\\basic\\1",
-    "name": "basic"
-  },
-  "game3": {
-    "version": "1",
-    "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\player\\downloads\\test\\game3\\1",
-    "name": "game3"
-  },
-  "game3-new": {
-    "version": "1.1",
-    "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\player\\downloads\\test\\game3-new\\1.1",
-    "name": "game3_new"
-  },
   "game1": {
     "version": "1.0",
     "path": "C:\\Users\\bryan\\OneDrive\\Desktop\\\u4ea4\u5927\u8ab2\u7a0b\\\u4e09\u4e0a\\\u7db2\u7a0b\u8a2d\\hw3\\player\\downloads\\test\\game1\\1.0",

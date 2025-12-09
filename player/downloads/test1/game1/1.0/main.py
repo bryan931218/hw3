@@ -1,4 +1,6 @@
 import argparse
+import json
+import os
 import time
 from typing import Dict
 
@@ -23,13 +25,12 @@ def act_roll(server: str, room: str, player: str) -> Dict:
         return {"success": False, "message": f"連線中斷：{exc}"}
 
 
+def clear_screen():
+    os.system("cls" if os.name == "nt" else "clear")
+
+
 def play_network(server: str, room: str, player: str):
-    print(
-        "\n============================\n"
-        "   🎲 雙人骰子對戰（線上同步）\n"
-        "============================"
-    )
-    print("玩法：輪到自己時按 Enter 擲骰，三回合後分數高者獲勝。")
+    last_snapshot = None
     while True:
         state_resp = get_state(server, room, player)
         if not state_resp.get("success"):
@@ -46,31 +47,58 @@ def play_network(server: str, room: str, player: str):
                 turn_player = players[state.get("turn_index", 0)]
             except Exception:
                 turn_player = players[0]
-        banner = f"\n─── 回合 {round_idx}/{state.get('max_rounds', 3)} ───"
-        print(banner)
-        if state.get("last_roll"):
-            lr = state["last_roll"]
-            who, val = list(lr.items())[0]
-            print(f"最新擲骰 ➜ {who}: {val}")
-        if scores:
-            score_line = " | ".join([f"{p}: {scores.get(p,0)}" for p in players])
-            print(f"比分   ➜ {score_line}")
-        if status == "finished":
-            winners = state.get("winner", [])
-            if not winners:
-                print("平手！")
+
+        snapshot = json.dumps(
+            {
+                "status": status,
+                "scores": scores,
+                "round": round_idx,
+                "last_roll": state.get("last_roll"),
+                "turn": turn_player,
+                "players": players,
+            },
+            sort_keys=True,
+        )
+        if snapshot != last_snapshot:
+            last_snapshot = snapshot
+            clear_screen()
+            print(
+                "\n============================\n"
+                "   🎲 雙人骰子對戰（線上同步）\n"
+                "============================"
+            )
+            print("玩法：輪到自己時按 Enter 擲骰，三回合後分數高者獲勝。")
+            banner = f"\n─── 回合 {round_idx}/{state.get('max_rounds', 3)} ───"
+            print(banner)
+            if state.get("last_roll"):
+                lr = state["last_roll"]
+                who, val = list(lr.items())[0]
+                print(f"最新擲骰 ➜ {who}: {val}")
+            if scores:
+                score_line = " | ".join([f"{p}: {scores.get(p,0)}" for p in players])
+                print(f"比分   ➜ {score_line}")
+            if status == "finished":
+                winners = state.get("winner", [])
+                if not winners:
+                    print("平手！")
+                else:
+                    print(f"勝者: {', '.join(winners)}")
+                return
+            if status == "waiting":
+                print("等待另一位玩家加入中...")
+            elif player != turn_player:
+                print(f"輪到 {turn_player}，等待中...")
             else:
-                print(f"勝者: {', '.join(winners)}")
+                print("輪到你擲骰，按 Enter ⏎ ")
+        if status == "finished":
             return
         if status == "waiting":
-            print("等待另一位玩家加入中...")
             time.sleep(1)
             continue
         if player != turn_player:
-            print(f"輪到 {turn_player}，等待中...")
             time.sleep(1)
             continue
-        input("輪到你擲骰，按 Enter ⏎ ")
+        input()  # 輪到自己時才等待輸入
         roll_resp = act_roll(server, room, player)
         print(roll_resp.get("message"))
         time.sleep(0.5)
@@ -89,7 +117,7 @@ def main():
             return
         play_network(game_server, args.room, args.player)
     except KeyboardInterrupt:
-        pass
+        sys.exit(0)
 
 
 if __name__ == "__main__":
