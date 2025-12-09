@@ -41,6 +41,11 @@ def start_game_server(game_id: str, version: str, room_id: str, zip_path: str) -
         return False, f"找不到 server_entry: {server_entry}", None
     bind_host = os.environ.get("GAME_SERVER_HOST", "0.0.0.0")
     public_host = os.environ.get("GAME_SERVER_PUBLIC_HOST", bind_host)
+    if public_host in ("0.0.0.0", "127.0.0.1"):
+        try:
+            public_host = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            public_host = bind_host
     port = _find_free_port(bind_host)
     cmd = [sys.executable, entry_path, "--room", room_id, "--port", str(port)]
     proc = subprocess.Popen(cmd, cwd=extract_dir)

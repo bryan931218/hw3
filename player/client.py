@@ -8,6 +8,7 @@ import zipfile
 import threading
 import time
 from typing import Dict, List, Optional
+from urllib.parse import urlparse, urlunparse
 
 import requests
 
@@ -339,6 +340,14 @@ def launch_game(player: str, room_id: str, game_id: str):
             game_server = room_data.get("game_server", {})
             if game_server.get("host") and game_server.get("port"):
                 gs_url = f"http://{game_server['host']}:{game_server['port']}"
+    except Exception:
+        pass
+    # 避免拿到 0.0.0.0，改用平台 URL 的 host
+    try:
+        parsed = urlparse(gs_url)
+        if parsed.hostname in ("0.0.0.0", "127.0.0.1"):
+            platform_host = urlparse(SERVER_URL).hostname or "localhost"
+            gs_url = urlunparse((parsed.scheme, f"{platform_host}:{parsed.port}", parsed.path, "", "", ""))
     except Exception:
         pass
     print(f"啟動遊戲 {info.get('name', game_id)} (版本 {info['version']})")
