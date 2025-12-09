@@ -44,11 +44,12 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 
-def get_input_timeout(prompt_text: str, timeout: float) -> Optional[str]:
+def get_input_timeout(prompt_text: str, timeout: float, newline_on_timeout: bool = True) -> Optional[str]:
     """
     在 timeout 秒內等待輸入，逾時回傳 None。Windows 使用 msvcrt，其他平台用 select。
     """
-    print(prompt_text, end="", flush=True)
+    if prompt_text:
+        print(prompt_text, end="", flush=True)
     if os.name == "nt":
         try:
             import msvcrt
@@ -67,10 +68,12 @@ def get_input_timeout(prompt_text: str, timeout: float) -> Optional[str]:
                         buf += ch.encode("utf-8")
                         print(ch, end="", flush=True)
                 time.sleep(0.05)
-            print()
+            if newline_on_timeout and prompt_text:
+                print()
             return None
         except Exception:
-            print()
+            if newline_on_timeout and prompt_text:
+                print()
             return None
     else:
         try:
@@ -351,7 +354,7 @@ def room_lobby(player: str, room: Dict):
             return
         if player == host:
             prompt_text = "選擇 > " if needs_render else ""
-            choice = get_input_timeout(prompt_text, 2)
+            choice = get_input_timeout(prompt_text, 2, newline_on_timeout=bool(prompt_text))
             if choice is None:
                 continue
             if choice == "1":
@@ -366,7 +369,7 @@ def room_lobby(player: str, room: Dict):
                 print("請輸入 1-2")
         else:
             prompt_text = "選擇 > " if needs_render else ""
-            choice = get_input_timeout(prompt_text, 2)
+            choice = get_input_timeout(prompt_text, 2, newline_on_timeout=bool(prompt_text))
             if choice is None:
                 continue
             if choice == "1":
@@ -459,7 +462,7 @@ def logout(player: str):
         pass
 
 
-def start_heartbeat(player: str, stop_event: threading.Event, interval: int = 60):
+def start_heartbeat(player: str, stop_event: threading.Event, interval: int = 5):
     def _beat():
         while not stop_event.is_set():
             try:
@@ -539,7 +542,6 @@ def main():
     current_room = None
     hb_stop = threading.Event()
     while not player:
-        clear_screen()
         print("\n1) 登入  2) 註冊  3) 離開")
         choice = prompt("選擇: ").strip()
         if choice == "1":
@@ -555,7 +557,6 @@ def main():
     start_heartbeat(player, hb_stop)
 
     while True:
-        clear_screen()
         print(
             "\n=== 大廳主選單 ===\n"
             "1) 商城 / 下載\n"
@@ -568,7 +569,6 @@ def main():
         choice = prompt("選擇: ").strip()
         if choice == "1":
             while True:
-                clear_screen()
                 print(
                     "\n--- 商城 / 下載 ---\n"
                     "1) 瀏覽商城\n"
@@ -592,7 +592,6 @@ def main():
                     print("請輸入 1-5")
         elif choice == "2":
             while True:
-                clear_screen()
                 print(
                     "\n--- 房間流程 ---\n"
                     "1) 建立房間並綁定最新版本\n"

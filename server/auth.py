@@ -4,7 +4,8 @@ from typing import Dict, Tuple
 
 from .database import Database
 
-HEARTBEAT_TIMEOUT = 120  # seconds
+# 若每 5 秒回報一次心跳，容忍兩次漏報 => 約 10 秒即視為登出
+HEARTBEAT_TIMEOUT = 10  # seconds
 active_sessions: Dict[str, Dict[str, float]] = {"developer": {}, "player": {}}
 
 

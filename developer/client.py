@@ -171,7 +171,7 @@ def logout(dev_name: str):
         pass
 
 
-def start_heartbeat(dev: str, stop_event: threading.Event, interval: int = 60):
+def start_heartbeat(dev: str, stop_event: threading.Event, interval: int = 5):
     def _beat():
         while not stop_event.is_set():
             try:
