@@ -28,8 +28,14 @@ def get_state():
         if player not in state["players"] and len(state["players"]) < 2:
             state["players"].append(player)
             state["scores"][player] = 0
+        # 確保每個玩家都有分數欄位
+        for p in state["players"]:
+            state["scores"].setdefault(p, 0)
         if len(state["players"]) >= 2 and state["status"] == "waiting":
             state["status"] = "in_game"
+    # 修正 turn_index 不超界
+    if state["players"]:
+        state["turn_index"] = state["turn_index"] % len(state["players"])
     return jsonify({"success": True, "data": state})
 
 
@@ -48,6 +54,9 @@ def do_action():
             state["status"] = "in_game"
         else:
             return jsonify({"success": False, "message": "等待另一位玩家加入", "data": state})
+    # turn_index 安全防呆
+    if state["players"]:
+        state["turn_index"] = state["turn_index"] % len(state["players"])
     if player != state["players"][state["turn_index"]]:
         return jsonify({"success": False, "message": "尚未輪到你", "data": state})
     roll_val = random.randint(1, 6) + random.randint(1, 6)

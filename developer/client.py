@@ -156,6 +156,7 @@ def remove_game_flow(dev_name: str):
     game_id = choose_game(dev_name)
     if not game_id:
         return
+    print("下架後：將無法被新玩家下載或建立新房間；若有進行中房間會被阻止下架。")
     confirm = prompt(f"確認下架 {game_id}? (y/N): ").lower()
     if confirm != "y":
         print("已取消")

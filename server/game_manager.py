@@ -110,6 +110,12 @@ def remove_game(db: Database, developer: str, game_id: str) -> Tuple[bool, str]:
             return False, "無權限下架此遊戲"
         if not game.get("active", True):
             return False, "遊戲已下架"
+        # 若有進行中的房間，阻止下架以避免狀態不一致
+        active_rooms = [
+            r for r in data.get("rooms", {}).values() if r.get("game_id") == game_id and r.get("status") != "finished"
+        ]
+        if active_rooms:
+            return False, "仍有進行中的房間，請先關閉後再下架"
         game["active"] = False
         return True, "已下架"
 
@@ -118,9 +124,8 @@ def remove_game(db: Database, developer: str, game_id: str) -> Tuple[bool, str]:
 
 def list_games(db: Database, include_inactive: bool = False) -> List[Dict]:
     data = db.snapshot()
-    games = list(data["games"].values())
-    if not include_inactive:
-        games = [g for g in games if g.get("active", True)]
+    # 若不包含 inactive，直接過濾；inactive 不對外顯示
+    games = [g for g in data["games"].values() if include_inactive or g.get("active", True)]
     for g in games:
         if g.get("ratings"):
             rs = [data["ratings"][rid] for rid in g["ratings"] if rid in data["ratings"]]
@@ -132,7 +137,7 @@ def list_games(db: Database, include_inactive: bool = False) -> List[Dict]:
 def game_detail(db: Database, game_id: str) -> Optional[Dict]:
     data = db.snapshot()
     game = data["games"].get(game_id)
-    if not game:
+    if not game or not game.get("active", True):
         return None
     ratings = [data["ratings"][rid] for rid in game.get("ratings", [])]
     game = {**game, "ratings": ratings}
@@ -232,8 +237,13 @@ def leave_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Opti
 
 def list_rooms(db: Database) -> List[Dict]:
     def _clean(data: Dict) -> List[Dict]:
-        # 淨空已結束的房間並持久化
-        to_delete = [rid for rid, r in data["rooms"].items() if r.get("status") == "finished"]
+        # 淨空已結束的房間或已下架遊戲的房間並持久化
+        inactive_games = {gid for gid, g in data["games"].items() if not g.get("active", True)}
+        to_delete = [
+            rid
+            for rid, r in data["rooms"].items()
+            if r.get("status") == "finished" or r.get("game_id") in inactive_games
+        ]
         for rid in to_delete:
             data["rooms"].pop(rid, None)
         return list(data["rooms"].values())

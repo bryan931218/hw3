@@ -26,16 +26,8 @@ def get_state():
         if player not in state["players"] and len(state["players"]) < 4:
             state["players"].append(player)
             state["scores"][player] = 0
-        # 確保每個玩家都有分數欄位
-        for p in state["players"]:
-            state["scores"].setdefault(p, 0)
         if len(state["players"]) >= 3 and state["status"] == "waiting":
             state["status"] = "in_game"
-        if len(state["players"]) < 3 and state["status"] != "finished":
-            state["status"] = "waiting"
-    # turn_index 防超界
-    if state["players"]:
-        state["turn_index"] = state["turn_index"] % len(state["players"])
     return jsonify({"success": True, "data": state})
 
 
@@ -54,8 +46,6 @@ def roll():
         state["status"] = "waiting"
         return jsonify({"success": False, "message": "需要至少三名玩家", "data": state})
     state["status"] = "in_game"
-    if state["players"]:
-        state["turn_index"] = state["turn_index"] % len(state["players"])
     if player != state["players"][state["turn_index"]]:
         return jsonify({"success": False, "message": "尚未輪到你", "data": state})
     roll_val = random.randint(1, 6) + random.randint(1, 6)

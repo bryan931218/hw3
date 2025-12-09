@@ -44,6 +44,7 @@ python run_developer.py
 - 下架：選擇遊戲，確認後會從商城移除（玩家仍可保留已下載版本）。
 - 若要建立新遊戲骨架：`python developer/create_game_template.py my_game`，會從 `developer/template/` 複製到 `developer/games/my_game/` 供開發與上架。
 - 環境變數 `GAME_SERVER_URL` 可指定後端位址（預設 `http://127.0.0.1:5000`）。
+  - 若連線到 linux1 公網服務，請設 `GAME_SERVER_URL=http://linux1.cs.nycu.edu.tw:5000`。
 
 ## Player Client (商城 / 下載 / 房間 / 評分)
 ```bash
@@ -54,7 +55,7 @@ python run_player.py
 - 房間子選單：建立房間、加入房間、啟動房間遊戲（會檢查已下載版本，再啟動本地入口）。
 - 狀態看板：列出玩家列表（在線/離線）、房間列表、上架遊戲列表。
 - 評分與評論：必須曾經啟動並開始過該遊戲，後端會驗證。
-- `GAME_SERVER_URL` 同樣可覆寫伺服器位址。
+- `GAME_SERVER_URL` 同樣可覆寫伺服器位址（預設 `http://linux1.cs.nycu.edu.tw:5000`；若本機測試改成 `http://127.0.0.1:5000`）。
 
 ## 統一遊戲封裝規格
 - 每個遊戲資料夾需包含 `manifest.json`，至少具備：
