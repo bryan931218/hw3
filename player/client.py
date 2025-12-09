@@ -10,6 +10,7 @@ import time
 from typing import Dict, List, Optional
 from urllib.parse import urlparse, urlunparse
 import ipaddress
+import select
 
 import requests
 
@@ -41,6 +42,45 @@ def ensure_player_dir(player: str) -> str:
 
 def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
+
+
+def get_input_timeout(prompt_text: str, timeout: float) -> Optional[str]:
+    """
+    在 timeout 秒內等待輸入，逾時回傳 None。Windows 使用 msvcrt，其他平台用 select。
+    """
+    print(prompt_text, end="", flush=True)
+    if os.name == "nt":
+        try:
+            import msvcrt
+
+            end_time = time.time() + timeout
+            buf = b""
+            while time.time() < end_time:
+                if msvcrt.kbhit():
+                    ch = msvcrt.getwch()
+                    if ch in ("\r", "\n"):
+                        print()
+                        return buf.decode("utf-8")
+                    elif ch == "\003":
+                        raise KeyboardInterrupt
+                    else:
+                        buf += ch.encode("utf-8")
+                        print(ch, end="", flush=True)
+                time.sleep(0.05)
+            print()
+            return None
+        except Exception:
+            print()
+            return None
+    else:
+        try:
+            rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+            if rlist:
+                line = sys.stdin.readline()
+                return line.rstrip("\n")
+            return None
+        except Exception:
+            return None
 
 
 def installed_path(player: str) -> str:
@@ -268,20 +308,32 @@ def fetch_room(room_id: str) -> Optional[Dict]:
 def room_lobby(player: str, room: Dict):
     """
     房間內的選單：房主可開始遊戲；其他人等待開始。
-    若狀態變為 in_game 則自動進入遊戲。
+    僅在狀態變更時刷新畫面，移除手動「重新整理」選項。
     """
     launched = False
+    last_view = None
     while True:
         room = fetch_room(room["id"]) or room
         status = room.get("status")
         host = room.get("host")
-        clear_screen()
-        print(
-            f"\n=== 房間 {room['id']} ===\n"
-            f"遊戲: {room['game_id']} 版本: {room['version']}\n"
-            f"房主: {host} | 玩家: {', '.join(room.get('players', []))}\n"
-            f"狀態: {status}"
+        snapshot = json.dumps(
+            {
+                "status": status,
+                "players": room.get("players", []),
+                "game": room.get("game_id"),
+                "version": room.get("version"),
+            },
+            sort_keys=True,
         )
+        if snapshot != last_view:
+            last_view = snapshot
+            clear_screen()
+            print(
+                f"\n=== 房間 {room['id']} ===\n"
+                f"遊戲: {room['game_id']} 版本: {room['version']}\n"
+                f"房主: {host} | 玩家: {', '.join(room.get('players', []))}\n"
+                f"狀態: {status}"
+            )
         if status == "in_game" and not launched:
             launched = True
             launch_game(player, room["id"], room["game_id"])
@@ -292,37 +344,29 @@ def room_lobby(player: str, room: Dict):
         if status == "finished":
             print("房間已結束")
             return
-        # 自動每 2 秒刷新一次，同時允許立即選單操作
-        refresh_wait = 2
-        end_time = time.time() + refresh_wait
-        while time.time() < end_time:
-            time.sleep(0.25)
-
         if player == host:
-            print("1) 開始遊戲  2) 重新整理  3) 離開房間")
-            choice = prompt("選擇: ").strip()
+            choice = get_input_timeout("1) 開始遊戲  2) 離開房間 > ", 2)
+            if choice is None:
+                continue
             if choice == "1":
                 started = start_room(player, room["id"])
                 if started:
                     room = started
                 continue
             elif choice == "2":
-                continue
-            elif choice == "3":
                 close_room(player, room["id"])
                 return
             else:
-                print("請輸入 1-3")
+                print("請輸入 1-2")
         else:
-            print("1) 重新整理  2) 離開房間")
-            choice = prompt("選擇: ").strip()
-            if choice == "1":
+            choice = get_input_timeout("1) 離開房間 > ", 2)
+            if choice is None:
                 continue
-            elif choice == "2":
+            if choice == "1":
                 leave_room(player, room["id"])
                 return
             else:
-                print("請輸入 1-2")
+                print("請輸入 1")
 
 
 def launch_game(player: str, room_id: str, game_id: str):

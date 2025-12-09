@@ -29,7 +29,13 @@ def play_network(server: str, room: str, player: str):
         status = state.get("status")
         scores = state.get("scores", {})
         round_idx = state.get("round")
-        turn_player = state["players"][state["turn_index"]] if status != "finished" else None
+        players = state.get("players", [])
+        turn_player = None
+        if players and status != "finished":
+            try:
+                turn_player = players[state.get("turn_index", 0)]
+            except Exception:
+                turn_player = players[0]
         print(f"\n回合 {round_idx}/{state.get('max_rounds', 3)} | 比分: {scores}")
         if state.get("last_roll"):
             print(f"最新擲骰: {state['last_roll']}")
@@ -40,6 +46,10 @@ def play_network(server: str, room: str, player: str):
             else:
                 print(f"勝者: {', '.join(winners)}")
             return
+        if status == "waiting":
+            print("等待另一位玩家加入中...")
+            time.sleep(1)
+            continue
         if player != turn_player:
             print(f"輪到 {turn_player}，等待中...")
             time.sleep(1)

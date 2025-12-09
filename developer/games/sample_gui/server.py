@@ -27,6 +27,15 @@ def check_win(board, symbol):
 
 @app.route("/state", methods=["GET"])
 def get_state():
+    # 允許透過 state 註冊玩家，避免雙方都在等待
+    player = request.args.get("player")
+    if player:
+        if player not in state["players"]:
+            if len(state["players"]) < 2:
+                state["players"].append(player)
+                state["symbols"][player] = "X" if len(state["players"]) == 1 else "O"
+        if len(state["players"]) >= 2 and state["status"] == "waiting":
+            state["status"] = "in_game"
     return jsonify({"success": True, "data": state})
 
 

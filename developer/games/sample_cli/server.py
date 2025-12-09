@@ -19,6 +19,17 @@ state = {
 
 @app.route("/state", methods=["GET"])
 def get_state():
+    """
+    允許透過 /state 自動註冊玩家並在兩名玩家到齊時切到 in_game，
+    避免雙方都只在輪詢狀態時卡在 waiting。
+    """
+    player = request.args.get("player")
+    if player:
+        if player not in state["players"] and len(state["players"]) < 2:
+            state["players"].append(player)
+            state["scores"][player] = 0
+        if len(state["players"]) >= 2 and state["status"] == "waiting":
+            state["status"] = "in_game"
     return jsonify({"success": True, "data": state})
 
 
