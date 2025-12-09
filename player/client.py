@@ -308,7 +308,7 @@ def fetch_room(room_id: str) -> Optional[Dict]:
 def room_lobby(player: str, room: Dict):
     """
     房間內的選單：房主可開始遊戲；其他人等待開始。
-    僅在狀態變更時刷新畫面，移除手動「重新整理」選項。
+    僅在狀態變更時刷新畫面，移除手動「重新整理」選項，房間資訊與選單同時顯示。
     """
     launched = False
     last_view = None
@@ -325,7 +325,8 @@ def room_lobby(player: str, room: Dict):
             },
             sort_keys=True,
         )
-        if snapshot != last_view:
+        needs_render = snapshot != last_view
+        if needs_render:
             last_view = snapshot
             clear_screen()
             print(
@@ -334,6 +335,10 @@ def room_lobby(player: str, room: Dict):
                 f"房主: {host} | 玩家: {', '.join(room.get('players', []))}\n"
                 f"狀態: {status}"
             )
+            if player == host:
+                print("1) 開始遊戲  2) 離開房間")
+            else:
+                print("1) 離開房間")
         if status == "in_game" and not launched:
             launched = True
             launch_game(player, room["id"], room["game_id"])
@@ -345,7 +350,8 @@ def room_lobby(player: str, room: Dict):
             print("房間已結束")
             return
         if player == host:
-            choice = get_input_timeout("1) 開始遊戲  2) 離開房間 > ", 2)
+            prompt_text = "選擇 > " if needs_render else ""
+            choice = get_input_timeout(prompt_text, 2)
             if choice is None:
                 continue
             if choice == "1":
@@ -359,7 +365,8 @@ def room_lobby(player: str, room: Dict):
             else:
                 print("請輸入 1-2")
         else:
-            choice = get_input_timeout("1) 離開房間 > ", 2)
+            prompt_text = "選擇 > " if needs_render else ""
+            choice = get_input_timeout(prompt_text, 2)
             if choice is None:
                 continue
             if choice == "1":
@@ -532,6 +539,7 @@ def main():
     current_room = None
     hb_stop = threading.Event()
     while not player:
+        clear_screen()
         print("\n1) 登入  2) 註冊  3) 離開")
         choice = prompt("選擇: ").strip()
         if choice == "1":
@@ -547,6 +555,7 @@ def main():
     start_heartbeat(player, hb_stop)
 
     while True:
+        clear_screen()
         print(
             "\n=== 大廳主選單 ===\n"
             "1) 商城 / 下載\n"
@@ -559,6 +568,7 @@ def main():
         choice = prompt("選擇: ").strip()
         if choice == "1":
             while True:
+                clear_screen()
                 print(
                     "\n--- 商城 / 下載 ---\n"
                     "1) 瀏覽商城\n"
@@ -582,6 +592,7 @@ def main():
                     print("請輸入 1-5")
         elif choice == "2":
             while True:
+                clear_screen()
                 print(
                     "\n--- 房間流程 ---\n"
                     "1) 建立房間並綁定最新版本\n"
