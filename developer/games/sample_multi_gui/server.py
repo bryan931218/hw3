@@ -28,6 +28,8 @@ def roll():
     if state["status"] == "finished":
         return jsonify({"success": False, "message": "遊戲已結束", "data": state})
     if player not in state["players"]:
+        if len(state["players"]) >= 4:
+            return jsonify({"success": False, "message": "玩家已滿", "data": state})
         state["players"].append(player)
         state["scores"][player] = 0
     if len(state["players"]) < 3:

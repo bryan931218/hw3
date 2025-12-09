@@ -12,8 +12,8 @@ import requests
 
 
 class DiceRaceGUI:
-    def __init__(self, server: str, room: str, player: str):
-        self.server = server
+    def __init__(self, server_base: str, room: str, player: str):
+        self.server = server_base.rstrip("/")
         self.room = room
         self.player = player
         self.root = tk.Tk()
@@ -45,7 +45,7 @@ class DiceRaceGUI:
 
     def _poll_once(self):
         try:
-            resp = requests.get(f"{self.server}/state", params={"player": self.player}).json()
+            resp = requests.get(f"{self.server}/state", params={"player": self.player}, timeout=5).json()
             if not resp.get("success"):
                 self.status.set(resp.get("message"))
                 return
@@ -95,6 +95,7 @@ class DiceRaceGUI:
             resp = requests.post(
                 f"{self.server}/action",
                 json={"player": self.player, "action": {"type": "roll"}},
+                timeout=5,
             ).json()
             self.status.set(resp.get("message"))
         except Exception as exc:

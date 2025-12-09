@@ -208,6 +208,26 @@ def join_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optio
     return db.update(_join)
 
 
+def leave_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optional[Dict]]:
+    def _leave(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
+        room = data["rooms"].get(room_id)
+        if not room:
+            return False, "房間不存在", None
+        if player not in room["players"]:
+            return False, "不在此房間", None
+        room["players"] = [p for p in room["players"] if p != player]
+        # 若房主離開或房間無人，直接結束房間並關閉 game server
+        if player == room.get("host") or not room["players"]:
+            room["status"] = "finished"
+            room["ended_at"] = int(time.time())
+            game_runtime.stop_game_server(room_id)
+            return True, "房間已關閉", room
+        # 若仍有人，保留房間等待狀態
+        return True, "已離開房間", room
+
+    return db.update(_leave)
+
+
 def list_rooms(db: Database) -> List[Dict]:
     data = db.snapshot()
     return list(data["rooms"].values())

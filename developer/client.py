@@ -9,7 +9,7 @@ import time
 
 import requests
 
-SERVER_URL = os.environ.get("GAME_SERVER_URL", "http://127.0.0.1:5000")
+SERVER_URL = os.environ.get("GAME_SERVER_URL", "http://linux1.cs.nycu.edu.tw:5000")
 BASE_GAME_DIR = os.path.join(os.path.dirname(__file__), "games")
 
 

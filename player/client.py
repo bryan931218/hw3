@@ -218,6 +218,17 @@ def join_room(player: str) -> Optional[Dict]:
     return None
 
 
+def leave_room(player: str, room_id: str) -> bool:
+    try:
+        resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/leave", json={"player": player})
+        data = resp.json()
+        print(data.get("message"))
+        return data.get("success", False)
+    except Exception as exc:
+        print(f"離開房間失敗: {exc}")
+        return False
+
+
 def start_room(player: str, room_id: str) -> Optional[Dict]:
     resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/start", json={"player": player})
     data = resp.json()
@@ -274,6 +285,7 @@ def room_lobby(player: str, room: Dict):
         if status == "finished":
             print("房間已結束")
             return
+        time.sleep(0.5)
 
         if player == host:
             print("1) 開始遊戲  2) 重新整理  3) 離開房間")
@@ -296,6 +308,7 @@ def room_lobby(player: str, room: Dict):
             if choice == "1":
                 continue
             elif choice == "2":
+                leave_room(player, room["id"])
                 return
             else:
                 print("請輸入 1-2")

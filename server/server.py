@@ -200,6 +200,17 @@ def join_room(room_id):
     return _resp(ok, msg, data, status=200 if ok else 400)
 
 
+@app.route("/rooms/<room_id>/leave", methods=["POST"])
+def leave_room(room_id):
+    body = request.get_json() or {}
+    player = body.get("player", "")
+    if not auth.is_logged_in("player", player):
+        return _resp(False, "請先登入玩家帳號", status=401)
+    auth.heartbeat("player", player)
+    ok, msg, data = game_manager.leave_room(db, player, room_id)
+    return _resp(ok, msg, data, status=200 if ok else 400)
+
+
 @app.route("/rooms/<room_id>/start", methods=["POST"])
 def start_room(room_id):
     body = request.get_json() or {}
