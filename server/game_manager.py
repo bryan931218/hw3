@@ -221,7 +221,9 @@ def leave_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Opti
             room["status"] = "finished"
             room["ended_at"] = int(time.time())
             game_runtime.stop_game_server(room_id)
-            return True, "房間已關閉", room
+            closed = dict(room)
+            data["rooms"].pop(room_id, None)
+            return True, "房間已關閉", closed
         # 若仍有人，保留房間等待狀態
         return True, "已離開房間", room
 
@@ -334,6 +336,8 @@ def close_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Opti
         room["status"] = "finished"
         room["ended_at"] = int(time.time())
         game_runtime.stop_game_server(room_id)
-        return True, "房間已關閉", room
+        closed = dict(room)
+        data["rooms"].pop(room_id, None)
+        return True, "房間已關閉", closed
 
     return db.update(_close)
