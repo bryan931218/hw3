@@ -151,17 +151,14 @@ class DiceRaceGUI:
 
 
 def main():
-    try:
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--player", required=True)
-        parser.add_argument("--server", required=True, help="平台伺服器（未使用）")
-        parser.add_argument("--game-server", required=True, help="遊戲伺服器位址")
-        parser.add_argument("--room", required=True)
-        args = parser.parse_args()
-        gui = DiceRaceGUI(args.game_server, args.room, args.player)
-        gui.run()
-    except KeyboardInterrupt:
-        pass
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--player", required=True)
+    parser.add_argument("--server", required=True, help="平台伺服器（未使用）")
+    parser.add_argument("--game-server", required=True, help="遊戲伺服器位址")
+    parser.add_argument("--room", required=True)
+    args = parser.parse_args()
+    gui = DiceRaceGUI(args.game_server, args.room, args.player)
+    gui.run()
 
 
 if __name__ == "__main__":

@@ -86,11 +86,10 @@ def main():
         args = parser.parse_args()
         game_server = args.game_server or args.server
         if not game_server or not args.room or not args.player:
-            print("缺少參數，請由大廳客戶端啟動")
             return
         play_network(game_server, args.room, args.player)
     except KeyboardInterrupt:
-        print("\n遊戲中斷，返回大廳")
+        pass
 
 
 if __name__ == "__main__":
