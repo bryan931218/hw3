@@ -10,6 +10,46 @@ from .database import Database
 from . import game_runtime
 
 STORAGE_ROOT = os.path.join(os.path.dirname(__file__), "storage", "games")
+ROOM_HEARTBEAT_TIMEOUT = 15  # seconds
+FINISHED_ROOM_GRACE_SECONDS = 30  # keep ended rooms shortly for users to see the reason
+
+
+def _touch_room_heartbeat(room: Dict, player: str) -> None:
+    hb = room.setdefault("heartbeats", {})
+    hb[player] = time.time()
+
+
+def _cleanup_rooms(data: Dict) -> None:
+    """
+    Auto-close rooms whose members stopped heartbeating and clear finished rooms after a grace period.
+    """
+    now = time.time()
+    inactive_games = {gid for gid, g in data["games"].items() if not g.get("active", True)}
+    to_delete = []
+    for rid, room in list(data.get("rooms", {}).items()):
+        # Remove rooms tied to inactive games immediately
+        if room.get("game_id") in inactive_games:
+            to_delete.append(rid)
+            continue
+        # Skip already finished rooms; delete later if grace expired
+        if room.get("status") == "finished":
+            ended_at = room.get("ended_at", now)
+            if now - ended_at > FINISHED_ROOM_GRACE_SECONDS:
+                to_delete.append(rid)
+            continue
+        # Initialize missing heartbeat entries for all players
+        hb = room.setdefault("heartbeats", {})
+        for p in room.get("players", []):
+            hb.setdefault(p, room.get("created_at", now))
+        stale_players = [p for p, ts in hb.items() if now - ts > ROOM_HEARTBEAT_TIMEOUT]
+        if stale_players:
+            room["status"] = "finished"
+            room["ended_at"] = int(now)
+            room["ended_reason"] = f"玩家 {', '.join(stale_players)} 斷線超時，房間結束"
+            game_runtime.stop_game_server(rid)
+    for rid in to_delete:
+        game_runtime.stop_game_server(rid)
+        data["rooms"].pop(rid, None)
 
 
 def _slugify(name: str) -> str:
@@ -208,7 +248,10 @@ def create_room(db: Database, host: str, game_id: str) -> Tuple[bool, str, Optio
             "min_players": game.get("min_players"),
             "status": "waiting",
             "created_at": int(time.time()),
+            "heartbeats": {},
+            "ended_reason": None,
         }
+        _touch_room_heartbeat(room, host)
         data["rooms"][room_id] = room
         return True, "房間建立成功", room
 
@@ -217,10 +260,13 @@ def create_room(db: Database, host: str, game_id: str) -> Tuple[bool, str, Optio
 
 def join_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optional[Dict]]:
     def _join(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
+        _cleanup_rooms(data)
         room = data["rooms"].get(room_id)
         if not room:
             return False, "房間不存在", None
         if room["status"] != "waiting":
+            if room["status"] == "finished":
+                return False, room.get("ended_reason", "房間已結束"), None
             return False, "遊戲已開始", None
         game = data["games"].get(room["game_id"])
         if not game or not game.get("active", True):
@@ -235,6 +281,7 @@ def join_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optio
         if len(room["players"]) >= game["max_players"]:
             return False, "房間已滿", None
         room["players"].append(player)
+        _touch_room_heartbeat(room, player)
         return True, "加入成功", room
 
     return db.update(_join)
@@ -242,36 +289,49 @@ def join_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optio
 
 def leave_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optional[Dict]]:
     def _leave(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
+        _cleanup_rooms(data)
         room = data["rooms"].get(room_id)
         if not room:
             return False, "房間不存在", None
+        if room.get("status") == "finished":
+            return False, room.get("ended_reason", "房間已結束"), room
         if player not in room["players"]:
             return False, "不在此房間", None
         # 任何玩家離開都結束房間並通知其餘玩家回大廳（避免留在遊戲中）
         room["players"] = [p for p in room["players"] if p != player]
         room["status"] = "finished"
         room["ended_at"] = int(time.time())
+        room["ended_reason"] = f"{player} 離開房間，房間已關閉"
         game_runtime.stop_game_server(room_id)
         closed = dict(room)
-        data["rooms"].pop(room_id, None)
         return True, "房間已關閉", closed
 
     return db.update(_leave)
 
 
+def room_heartbeat(db: Database, room_id: str, player: str) -> Tuple[bool, str, Optional[Dict]]:
+    def _beat(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
+        _cleanup_rooms(data)
+        room = data["rooms"].get(room_id)
+        if not room:
+            return False, "房間不存在或已關閉", None
+        if player not in room.get("players", []):
+            return False, "你不在此房間", None
+        if room.get("status") == "finished":
+            return False, room.get("ended_reason", "房間已結束"), dict(room)
+        _touch_room_heartbeat(room, player)
+        return True, "ok", dict(room)
+
+    return db.update(_beat)
+
+
 def list_rooms(db: Database) -> List[Dict]:
     def _clean(data: Dict) -> List[Dict]:
-        # 淨空已結束的房間或已下架遊戲的房間並持久化
-        inactive_games = {gid for gid, g in data["games"].items() if not g.get("active", True)}
-        to_delete = [
-            rid
-            for rid, r in data["rooms"].items()
-            if r.get("status") == "finished" or r.get("game_id") in inactive_games
-        ]
-        for rid in to_delete:
-            data["rooms"].pop(rid, None)
+        _cleanup_rooms(data)
         rooms = []
         for rid, r in data["rooms"].items():
+            if r.get("status") == "finished":
+                continue
             game = data["games"].get(r.get("game_id"), {})
             if "max_players" not in r and game.get("max_players") is not None:
                 r["max_players"] = game.get("max_players")
@@ -284,15 +344,18 @@ def list_rooms(db: Database) -> List[Dict]:
 
 
 def get_room(db: Database, room_id: str) -> Optional[Dict]:
-    data = db.snapshot()
-    room = data["rooms"].get(room_id)
-    if not room:
-        return None
-    game = data["games"].get(room.get("game_id"), {})
-    room = dict(room)
-    room.setdefault("max_players", game.get("max_players"))
-    room.setdefault("min_players", game.get("min_players"))
-    return room
+    def _get(data: Dict) -> Optional[Dict]:
+        _cleanup_rooms(data)
+        room = data["rooms"].get(room_id)
+        if not room:
+            return None
+        game = data["games"].get(room.get("game_id"), {})
+        room_copy = dict(room)
+        room_copy.setdefault("max_players", game.get("max_players"))
+        room_copy.setdefault("min_players", game.get("min_players"))
+        return room_copy
+
+    return db.update(_get)
 
 
 def list_players(db: Database) -> List[Dict]:
@@ -315,9 +378,12 @@ def player_info(db: Database, player: str) -> Optional[Dict]:
 
 def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Optional[Dict]]:
     def _start(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
+        _cleanup_rooms(data)
         room = data["rooms"].get(room_id)
         if not room:
             return False, "房間不存在", None
+        if room.get("status") == "finished":
+            return False, room.get("ended_reason", "房間已結束"), room
         game = data["games"].get(room["game_id"])
         if not game:
             return False, "遊戲不存在", None
@@ -358,6 +424,7 @@ def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Opti
             pass
         for p in room["players"]:
             _mark_played(data, p, room["game_id"])
+            _touch_room_heartbeat(room, p)
         return True, "遊戲開始", room
 
     return db.update(_start)
@@ -400,18 +467,19 @@ def add_rating(db: Database, player: str, game_id: str, score: int, comment: str
 
 def close_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Optional[Dict]]:
     def _close(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
+        _cleanup_rooms(data)
         room = data["rooms"].get(room_id)
         if not room:
             return False, "房間不存在", None
         if player not in room["players"]:
             return False, "你不在此房間", None
         if room["status"] == "finished":
-            return False, "房間已結束", room
+            return False, room.get("ended_reason", "房間已結束"), room
         room["status"] = "finished"
         room["ended_at"] = int(time.time())
+        room["ended_reason"] = f"{player} 關閉了房間"
         game_runtime.stop_game_server(room_id)
         closed = dict(room)
-        data["rooms"].pop(room_id, None)
         return True, "房間已關閉", closed
 
     return db.update(_close)
