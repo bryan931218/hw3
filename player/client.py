@@ -386,73 +386,85 @@ def room_lobby(player: str, room: Dict):
     房間內的選單：房主可開始遊戲；其他人等待開始。
     僅在狀態變更時刷新畫面，移除手動「重新整理」選項，房間資訊與選單同時顯示。
     """
+    hb_stop = threading.Event()
+    start_room_heartbeat(player, room["id"], hb_stop)
     launched = False
     last_view = None
-    while True:
-        latest = fetch_room(room["id"])
-        if not latest:
-            print("房間已關閉或不存在")
-            return
-        room = latest
-        if room.get("max_players") in (None, 0, "?"):
-            detail = fetch_game_detail(room.get("game_id"))
-            if detail and detail.get("max_players"):
-                room["max_players"] = detail.get("max_players")
-        status = room.get("status")
-        host = room.get("host")
-        snapshot = json.dumps(
-            {
-                "status": status,
-                "players": room.get("players", []),
-                "game": room.get("game_id"),
-                "version": room.get("version"),
-            },
-            sort_keys=True,
-        )
-        needs_render = snapshot != last_view
-        if needs_render:
-            last_view = snapshot
-            clear_screen()
-            print(
-                f"\n=== 房間 {room['id']} ===\n"
-                f"遊戲: {room['game_id']} 版本: {room['version']}\n"
-                f"房主: {host} | 玩家 ({len(room.get('players', []))}/{room.get('max_players','?')}): {', '.join(room.get('players', []))}\n"
-                f"狀態: {status}"
+    last_reason = None
+    try:
+        while True:
+            latest = fetch_room(room["id"])
+            if not latest:
+                if last_reason:
+                    print(f"房間已關閉：{last_reason}")
+                else:
+                    print("房間已關閉或不存在")
+                return
+            room = latest
+            if room.get("ended_reason"):
+                last_reason = room.get("ended_reason")
+            if room.get("max_players") in (None, 0, "?"):
+                detail = fetch_game_detail(room.get("game_id"))
+                if detail and detail.get("max_players"):
+                    room["max_players"] = detail.get("max_players")
+            status = room.get("status")
+            host = room.get("host")
+            snapshot = json.dumps(
+                {
+                    "status": status,
+                    "players": room.get("players", []),
+                    "game": room.get("game_id"),
+                    "version": room.get("version"),
+                },
+                sort_keys=True,
             )
-            if player == host:
-                print("1) 開始遊戲  2) 離開房間")
-            else:
-                print("1) 離開房間")
-        if status == "in_game" and not launched:
-            launched = True
-            launch_game(player, room["id"], room["game_id"])
-            return
-        if status == "finished":
-            print("房間已結束")
-            return
-        # 非阻塞輸入，每 2 秒自動刷新一次狀態；只在畫面刷新時顯示提示字
-        if needs_render:
-            print("選擇 > ", end="", flush=True)
-        choice = get_input_timeout("", 2, newline_on_timeout=False)
-        if choice is None:
-            continue
-        if player == host:
-            if choice == "1":
-                started = start_room(player, room["id"])
-                if started:
-                    room = started
+            needs_render = snapshot != last_view
+            if needs_render:
+                last_view = snapshot
+                clear_screen()
+                print(
+                    f"\n=== 房間 {room['id']} ===\n"
+                    f"遊戲: {room['game_id']} 版本: {room['version']}\n"
+                    f"房主: {host} | 玩家 ({len(room.get('players', []))}/{room.get('max_players','?')}): {', '.join(room.get('players', []))}\n"
+                    f"狀態: {status}"
+                )
+                if player == host:
+                    print("1) 開始遊戲  2) 離開房間")
+                else:
+                    print("1) 離開房間")
+            if status == "in_game" and not launched:
+                launched = True
+                launch_game(player, room["id"], room["game_id"])
+                return
+            if status == "finished":
+                reason = room.get("ended_reason") or "房間已結束"
+                print(f"房間已結束：{reason}")
+                return
+            # 非阻塞輸入，每 2 秒自動刷新一次狀態；只在畫面刷新時顯示提示字
+            if needs_render:
+                print("選擇 > ", end="", flush=True)
+            choice = get_input_timeout("", 2, newline_on_timeout=False)
+            if choice is None:
                 continue
-            elif choice == "2":
-                close_room(player, room["id"])
-                return
+            if player == host:
+                if choice == "1":
+                    started = start_room(player, room["id"])
+                    if started:
+                        room = started
+                    continue
+                elif choice == "2":
+                    close_room(player, room["id"])
+                    return
+                else:
+                    print("請輸入 1-2")
             else:
-                print("請輸入 1-2")
-        else:
-            if choice == "1":
-                leave_room(player, room["id"])
-                return
-            else:
-                print("請輸入 1")
+                if choice == "1":
+                    leave_room(player, room["id"])
+                    return
+                else:
+                    print("請輸入 1")
+    finally:
+        hb_stop.set()
 
 
 def launch_game(player: str, room_id: str, game_id: str):
@@ -551,6 +563,32 @@ def start_heartbeat(player: str, stop_event: threading.Event, interval: int = 5)
         while not stop_event.is_set():
             try:
                 requests.post(f"{SERVER_URL}/player/heartbeat", json={"username": player})
+            except Exception:
+                pass
+            stop_event.wait(interval)
+
+    t = threading.Thread(target=_beat, daemon=True)
+    t.start()
+    return t
+
+
+def start_room_heartbeat(player: str, room_id: str, stop_event: threading.Event, interval: int = 4):
+    """
+    Ping the platform while留在房間或進入遊戲中，讓伺服器偵測斷線玩家並能提供結束原因。
+    """
+
+    def _beat():
+        while not stop_event.is_set():
+            try:
+                resp = requests.post(
+                    f"{SERVER_URL}/rooms/{room_id}/heartbeat", json={"player": player}, timeout=2
+                )
+                if resp.ok:
+                    payload = resp.json()
+                    if not payload.get("success"):
+                        msg = payload.get("message") or "房間已結束"
+                        print(f"\n[房間通知] {msg}")
+                        break
             except Exception:
                 pass
             stop_event.wait(interval)
@@ -699,11 +737,10 @@ def run_flow():
             while True:
                 print(
                     "\n--- 房間流程 ---\n"
-                    "1) 建立房間並綁定最新版本\n"
+                    "1) 建立房間\n"
                     "2) 加入房間\n"
-                    "3) 啟動房間遊戲\n"
-                    "4) 查看房間列表（僅限已安裝遊戲）\n"
-                    "5) 返回主選單\n"
+                    "3) 查看房間列表\n"
+                    "4) 返回主選單\n"
                 )
                 sub = prompt("選擇: ").strip()
                 if sub == "1":
@@ -717,14 +754,8 @@ def run_flow():
                         room_lobby(player, current_room)
                         current_room = None
                 elif sub == "3":
-                    if current_room:
-                        room_lobby(player, current_room)
-                        current_room = None
-                    else:
-                        print("請先建立或加入房間")
-                elif sub == "4":
                     list_rooms(list(load_installed(player).keys()))
-                elif sub == "5":
+                elif sub == "4":
                     break
                 else:
                     print("請輸入 1-5")
