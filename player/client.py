@@ -397,16 +397,6 @@ def download_or_update(player: str):
     print(f"下載完成，安裝於 {extract_path}")
 
 
-def list_installed_games(player: str):
-    installed = load_installed(player)
-    print(f"\n=== {menu_title('已安裝遊戲', player)} ===")
-    if not installed:
-        print("尚未下載任何遊戲")
-        return
-    for gid, info in installed.items():
-        print(f"- {info.get('name', gid)} ({gid}) 版本 {info.get('version')}")
-
-
 def rate_game_by_id(player: str, game_id: str, game_name: str):
     try:
         score = int(prompt("評分 1-5: ").strip() or "0")
@@ -438,7 +428,7 @@ def store_game_menu(player: str, game: Dict):
         stats = (detail or {}).get("player_stats") or {}
         plays = int(stats.get("plays", 0) or 0)
         clear_screen()
-        print(f"=== {detail.get('name', gid)} ({gid}) ===")
+        print(f"=== {detail.get('name', gid)} ===")
         print(f"作者: {detail.get('developer', '-')}")
         print(f"簡介: {detail.get('description', '-')}")
         print(f"最新版本: {detail.get('latest_version', '-')}")
@@ -506,12 +496,6 @@ def browse_store(player: str):
             print("選擇無效")
             continue
         store_game_menu(player, games[idx - 1])
-
-
-def my_games_menu(player: str):
-    clear_screen()
-    list_installed_games(player)
-    prompt("\n按 Enter 返回: ")
 
 
 def create_room(player: str):
@@ -1077,29 +1061,14 @@ def run_flow():
     while True:
         print(
             f"\n=== 大廳主選單 ({player}) ===\n"
-            "1) 瀏覽遊戲\n"
+            "1) 遊戲商城\n"
             "2) 開始遊戲\n"
             "3) 狀態看板\n"
             "4) 離開\n"
         )
         choice = prompt("選擇: ").strip()
         if choice == "1":
-            while True:
-                print(
-                    f"\n--- 商城 / 下載 ({player}) ---\n"
-                    "1) 瀏覽商城\n"
-                    "2) 我的遊戲\n"
-                    "3) 返回主選單\n"
-                )
-                sub = prompt("選擇: ").strip()
-                if sub == "1":
-                    browse_store(player)
-                elif sub == "2":
-                    my_games_menu(player)
-                elif sub == "3":
-                    break
-                else:
-                    print("請輸入 1-3")
+            browse_store(player)
         elif choice == "2":
             while True:
                 print(

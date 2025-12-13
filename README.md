@@ -14,7 +14,7 @@ python run_developer.py
 python run_player.py
 ```
 - 先註冊 / 登入玩家帳號。
-- 商城/下載子選單：瀏覽遊戲、下載/更新（安裝到 `player/downloads/<player>/<game>/<version>`）。
+- 遊戲商城：瀏覽遊戲、查看詳細、下載/更新（安裝到 `player/downloads/<player>/<game>/<version>`）。
 - 房間子選單：建立房間、加入房間、啟動房間遊戲
 - 狀態看板：列出玩家列表（在線/離線）、房間列表、上架遊戲列表。
 - 評分與評論：必須曾經啟動並開始過該遊戲才能評論。
@@ -70,4 +70,3 @@ python run_player.py
 3) 玩家端：`python run_player.py`
    - 註冊/登入 → 商城瀏覽 → 下載任一遊戲
    - 建立房間 → 啟動房間遊戲（會執行本地 `main.py`）→ 返回後對遊戲評分留言
-

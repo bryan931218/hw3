@@ -1,0 +1,6 @@
+{
+  "entry": "main.py",
+  "min_players": 2,
+  "max_players": 2,
+  "server_entry": "server.py"
+}
