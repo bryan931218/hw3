@@ -491,17 +491,6 @@ def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Opti
             public_host = os.environ.get("GAME_SERVER_PUBLIC_HOST", os.environ.get("HOST", "127.0.0.1"))
             public_port = os.environ.get("PORT", "5000")
             room["game_server"] = {"host": public_host, "port": public_port}
-        try:
-            host = room["game_server"]["host"]
-            port = room["game_server"]["port"]
-            base = f"http://{host}:{port}"
-            for p in room["players"]:
-                try:
-                    requests.get(f"{base}/state", params={"player": p}, timeout=1)
-                except Exception:
-                    pass
-        except Exception:
-            pass
         for p in room["players"]:
             _mark_played(data, p, room["game_id"])
             _touch_room_heartbeat(room, p)

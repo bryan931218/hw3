@@ -3,6 +3,7 @@ import os
 import socket
 import subprocess
 import sys
+import time
 import zipfile
 from typing import Dict, Optional, Tuple
 
@@ -14,6 +15,17 @@ def _find_free_port(bind_host: str = "0.0.0.0") -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((bind_host, 0))
         return s.getsockname()[1]
+
+
+def _wait_port(host: str, port: int, timeout_s: float = 3.0) -> bool:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.3):
+                return True
+        except OSError:
+            time.sleep(0.05)
+    return False
 
 
 def _extract(zip_path: str, game_id: str, version: str) -> str:
@@ -50,6 +62,15 @@ def start_game_server(game_id: str, version: str, room_id: str, zip_path: str) -
     cmd = [sys.executable, entry_path, "--room", room_id, "--port", str(port)]
     proc = subprocess.Popen(cmd, cwd=extract_dir)
     processes[room_id] = proc
+
+    # Avoid race: wait briefly until the process binds the assigned port.
+    if not _wait_port("127.0.0.1", port, timeout_s=3.0):
+        exit_code = proc.poll()
+        stop_game_server(room_id)
+        if exit_code is not None:
+            return False, f"game server 啟動失敗 (exit {exit_code})", None
+        return False, "game server 啟動逾時", None
+
     return True, "game server 已啟動", {"host": public_host, "port": port}
 
 

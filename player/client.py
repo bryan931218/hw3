@@ -555,18 +555,25 @@ def launch_game(player: str, room_id: str, game_id: str) -> bool:
                 pass
     except Exception:
         pass
-    # 簡單預檢 game server：僅對需要 server_entry 的遊戲做 TCP 連線檢查
+    # 簡單預檢 game server：僅對需要 server_entry 的遊戲做 TCP 連線檢查（避免剛啟動時的 race）
     if has_game_server:
-        try:
-            parsed = urlparse(gs_url)
-            host = parsed.hostname or "localhost"
-            port = parsed.port or 80
-            import socket
+        parsed = urlparse(gs_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 80
+        import socket
 
-            with socket.create_connection((host, port), timeout=2):
-                pass
-        except Exception as exc:
-            print(f"無法連線到遊戲伺服器，請稍後再試：{exc}")
+        deadline = time.time() + 6.0
+        last_exc: Optional[Exception] = None
+        while time.time() < deadline:
+            try:
+                with socket.create_connection((host, port), timeout=1.0):
+                    last_exc = None
+                    break
+            except Exception as exc:
+                last_exc = exc
+                time.sleep(0.2)
+        if last_exc is not None:
+            print(f"無法連線到遊戲伺服器（可能仍在啟動中），請稍後再試：{last_exc}")
             return False
     print(f"啟動遊戲 {info.get('name', game_id)} (版本 {info['version']})")
     cmd = [sys.executable, script, "--player", player, "--server", SERVER_URL, "--room", room_id]
