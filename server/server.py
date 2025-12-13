@@ -40,7 +40,7 @@ def dev_login():
 @app.route("/dev/logout", methods=["POST"])
 def dev_logout():
     body = request.get_json() or {}
-    auth.logout("developer", body.get("username", ""))
+    auth.logout(db, "developer", body.get("username", ""))
     return _resp(True, "已登出")
 
 
@@ -48,9 +48,9 @@ def dev_logout():
 def dev_heartbeat():
     body = request.get_json() or {}
     username = body.get("username", "")
-    if not auth.is_logged_in("developer", username):
+    if not auth.is_logged_in(db, "developer", username):
         return _resp(False, "未登入", status=401)
-    auth.heartbeat("developer", username)
+    auth.heartbeat(db, "developer", username)
     return _resp(True, "ok")
 
 
@@ -71,7 +71,7 @@ def player_login():
 @app.route("/player/logout", methods=["POST"])
 def player_logout():
     body = request.get_json() or {}
-    auth.logout("player", body.get("username", ""))
+    auth.logout(db, "player", body.get("username", ""))
     return _resp(True, "已登出")
 
 
@@ -94,9 +94,9 @@ def game_detail(game_id):
 def upload_game():
     body = request.get_json() or {}
     dev = body.get("developer", "")
-    if not auth.is_logged_in("developer", dev):
+    if not auth.is_logged_in(db, "developer", dev):
         return _resp(False, "請先登入開發者帳號", status=401)
-    auth.heartbeat("developer", dev)
+    auth.heartbeat(db, "developer", dev)
     required = ["name", "description", "version", "file_data"]
     missing = [k for k in required if body.get(k) in (None, "")]
     if missing:
@@ -118,9 +118,9 @@ def upload_game():
 def update_game(game_id):
     body = request.get_json() or {}
     dev = body.get("developer", "")
-    if not auth.is_logged_in("developer", dev):
+    if not auth.is_logged_in(db, "developer", dev):
         return _resp(False, "請先登入開發者帳號", status=401)
-    auth.heartbeat("developer", dev)
+    auth.heartbeat(db, "developer", dev)
     if not body.get("version") or not body.get("file_data"):
         return _resp(False, "缺少版本或檔案資料", status=400)
     ok, msg, data = game_manager.update_game_version(
@@ -133,9 +133,9 @@ def update_game(game_id):
 def remove_game(game_id):
     body = request.get_json() or {}
     dev = body.get("developer", "")
-    if not auth.is_logged_in("developer", dev):
+    if not auth.is_logged_in(db, "developer", dev):
         return _resp(False, "請先登入開發者帳號", status=401)
-    auth.heartbeat("developer", dev)
+    auth.heartbeat(db, "developer", dev)
     ok, msg = game_manager.remove_game(db, dev, game_id)
     return _resp(ok, msg, status=200 if ok else 400)
 
@@ -176,9 +176,9 @@ def list_players():
 def create_room():
     body = request.get_json() or {}
     player = body.get("player", "")
-    if not auth.is_logged_in("player", player):
+    if not auth.is_logged_in(db, "player", player):
         return _resp(False, "請先登入玩家帳號", status=401)
-    auth.heartbeat("player", player)
+    auth.heartbeat(db, "player", player)
     ok, msg, data = game_manager.create_room(db, player, body.get("game_id", ""))
     return _resp(ok, msg, data, status=201 if ok else 400)
 
@@ -187,9 +187,9 @@ def create_room():
 def join_room(room_id):
     body = request.get_json() or {}
     player = body.get("player", "")
-    if not auth.is_logged_in("player", player):
+    if not auth.is_logged_in(db, "player", player):
         return _resp(False, "請先登入玩家帳號", status=401)
-    auth.heartbeat("player", player)
+    auth.heartbeat(db, "player", player)
     ok, msg, data = game_manager.join_room(db, player, room_id)
     return _resp(ok, msg, data, status=200 if ok else 400)
 
@@ -198,9 +198,9 @@ def join_room(room_id):
 def leave_room(room_id):
     body = request.get_json() or {}
     player = body.get("player", "")
-    if not auth.is_logged_in("player", player):
+    if not auth.is_logged_in(db, "player", player):
         return _resp(False, "請先登入玩家帳號", status=401)
-    auth.heartbeat("player", player)
+    auth.heartbeat(db, "player", player)
     ok, msg, data = game_manager.leave_room(db, player, room_id)
     return _resp(ok, msg, data, status=200 if ok else 400)
 
@@ -209,9 +209,9 @@ def leave_room(room_id):
 def start_room(room_id):
     body = request.get_json() or {}
     player = body.get("player", "")
-    if not auth.is_logged_in("player", player):
+    if not auth.is_logged_in(db, "player", player):
         return _resp(False, "請先登入玩家帳號", status=401)
-    auth.heartbeat("player", player)
+    auth.heartbeat(db, "player", player)
     ok, msg, data = game_manager.start_room(db, room_id, player)
     return _resp(ok, msg, data, status=200 if ok else 400)
 
@@ -220,9 +220,9 @@ def start_room(room_id):
 def room_heartbeat(room_id):
     body = request.get_json() or {}
     player = body.get("player", "")
-    if not auth.is_logged_in("player", player):
+    if not auth.is_logged_in(db, "player", player):
         return _resp(False, "請先登入玩家帳號", status=401)
-    auth.heartbeat("player", player)
+    auth.heartbeat(db, "player", player)
     ok, msg, data = game_manager.room_heartbeat(db, room_id, player)
     return _resp(ok, msg, data, status=200 if ok else 400)
 
@@ -231,9 +231,9 @@ def room_heartbeat(room_id):
 def close_room(room_id):
     body = request.get_json() or {}
     player = body.get("player", "")
-    if not auth.is_logged_in("player", player):
+    if not auth.is_logged_in(db, "player", player):
         return _resp(False, "請先登入玩家帳號", status=401)
-    auth.heartbeat("player", player)
+    auth.heartbeat(db, "player", player)
     ok, msg, data = game_manager.close_room(db, room_id, player)
     return _resp(ok, msg, data, status=200 if ok else 400)
 
@@ -242,9 +242,9 @@ def close_room(room_id):
 def add_rating():
     body = request.get_json() or {}
     player = body.get("player", "")
-    if not auth.is_logged_in("player", player):
+    if not auth.is_logged_in(db, "player", player):
         return _resp(False, "請先登入玩家帳號", status=401)
-    auth.heartbeat("player", player)
+    auth.heartbeat(db, "player", player)
     try:
         score = int(body.get("score", 0))
     except (TypeError, ValueError):
@@ -257,9 +257,9 @@ def add_rating():
 def player_heartbeat():
     body = request.get_json() or {}
     username = body.get("username", "")
-    if not auth.is_logged_in("player", username):
+    if not auth.is_logged_in(db, "player", username):
         return _resp(False, "未登入", status=401)
-    auth.heartbeat("player", username)
+    auth.heartbeat(db, "player", username)
     return _resp(True, "ok")
 
 

@@ -1,17 +1,22 @@
 import os
 import time
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from .database import Database
 
-HEARTBEAT_TIMEOUT = 10  # seconds
-active_sessions: Dict[str, Dict[str, float]] = {"developer": {}, "player": {}}
-
+SESSION_LOGIN_LOCK = int(os.environ.get("SESSION_LOGIN_LOCK", "30")) 
 
 def _get_table(user_type: str) -> str:
     if user_type not in ("developer", "player"):
         raise ValueError("Unknown user type")
     return f"{user_type}s"
+
+
+def _ensure_sessions(data: Dict) -> Dict[str, Dict[str, float]]:
+    sessions = data.setdefault("sessions", {})
+    sessions.setdefault("developer", {})
+    sessions.setdefault("player", {})
+    return sessions
 
 
 def register(db: Database, user_type: str, username: str, password: str) -> Tuple[bool, str]:
@@ -27,6 +32,7 @@ def register(db: Database, user_type: str, username: str, password: str) -> Tupl
             data[table][username]["games"] = []
         else:
             data[table][username]["played_games"] = {}
+        _ensure_sessions(data)
         return True, f"{user_type} registered"
 
     return db.update(_register)
@@ -39,50 +45,64 @@ def login(db: Database, user_type: str, username: str, password: str) -> Tuple[b
         user = data[table].get(username)
         if not user or user.get("password") != password:
             return False, "帳號或密碼錯誤"
+        sessions = _ensure_sessions(data)[user_type]
         now = time.time()
-        # 若已有舊 session 但已逾時，視為離線
-        last_seen = active_sessions[user_type].get(username)
-        if last_seen and now - last_seen < HEARTBEAT_TIMEOUT:
+        last_seen = sessions.get(username)
+        if last_seen and now - last_seen < SESSION_LOGIN_LOCK:
             return False, "帳號已在其他裝置登入"
-        active_sessions[user_type][username] = now
-        # 標記目前線上狀態（方便玩家列表呈現）
+        sessions[username] = now
         user["online"] = True
         return True, "登入成功"
 
     return db.update(_login)
 
 
-def logout(user_type: str, username: str) -> None:
-    if username in active_sessions.get(user_type, {}):
-        active_sessions[user_type].pop(username, None)
-    # 嘗試標記離線（若資料存在）
+def logout(db: Database, user_type: str, username: str) -> None:
+    table = _get_table(user_type)
+
+    def _logout(data: Dict) -> None:
+        sessions = _ensure_sessions(data)[user_type]
+        sessions.pop(username, None)
+        if username in data.get(table, {}):
+            data[table][username]["online"] = False
+
     try:
-        data_path = os.path.join(os.path.dirname(__file__), "data.json")
-        db = Database(data_path)  # lightweight re-open to update flag
-        table = _get_table(user_type)
-
-        def _mark(data: Dict):
-            if username in data.get(table, {}):
-                data[table][username]["online"] = False
-
-        db.update(_mark)
+        db.update(_logout)
     except Exception:
         pass
 
 
-def is_logged_in(user_type: str, username: str) -> bool:
-    now = time.time()
-    sessions = active_sessions.get(user_type, {})
-    last_seen = sessions.get(username)
-    if not last_seen:
+def is_logged_in(db: Database, user_type: str, username: str) -> bool:
+    table = _get_table(user_type)
+
+    def _check(data: Dict) -> bool:
+        sessions = _ensure_sessions(data)[user_type]
+        last_seen = sessions.get(username)
+        if not last_seen:
+            return False
+        now = time.time()
+        if now - last_seen > SESSION_LOGIN_LOCK:
+            sessions.pop(username, None)
+            if username in data.get(table, {}):
+                data[table][username]["online"] = False
+            return False
+        sessions[username] = now  # touch
+        return True
+
+    try:
+        return bool(db.update(_check))
+    except Exception:
         return False
-    if now - last_seen > HEARTBEAT_TIMEOUT:
-        sessions.pop(username, None)
-        return False
-    sessions[username] = now  # touch
-    return True
 
 
-def heartbeat(user_type: str, username: str) -> None:
-    if username in active_sessions.get(user_type, {}):
-        active_sessions[user_type][username] = time.time()
+def heartbeat(db: Database, user_type: str, username: str) -> None:
+    def _beat(data: Dict) -> None:
+        sessions = _ensure_sessions(data)[user_type]
+        if username in sessions:
+            sessions[username] = time.time()
+
+    try:
+        db.update(_beat)
+    except Exception:
+        pass
+

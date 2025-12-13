@@ -11,6 +11,7 @@ DEFAULT_DATA = {
     "games": {},
     "rooms": {},
     "ratings": {},
+    "sessions": {"developer": {}, "player": {}},
     "next_ids": {"room": 1, "rating": 1},
 }
 
