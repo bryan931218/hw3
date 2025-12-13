@@ -34,7 +34,7 @@ python run_player.py
 
 ## 伺服器部署：
    ```bash
-   git clone <repo_url> hw3 && cd hw3
+   git clone https://github.com/bryan931218/hw3.git && cd hw3
    python3 -m venv .venv && source .venv/bin/activate
    pip install -r requirements.txt
    export PORT=5000
