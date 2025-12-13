@@ -13,6 +13,10 @@ SERVER_URL = os.environ.get("GAME_SERVER_URL", "http://linux1.cs.nycu.edu.tw:500
 BASE_GAME_DIR = os.path.join(os.path.dirname(__file__), "games")
 
 
+def menu_title(title: str, username: str | None) -> str:
+    return f"{title} ({username})" if username else title
+
+
 def ensure_server_available(url: str) -> bool:
     try:
         resp = requests.get(f"{url}/games", timeout=3)
@@ -40,7 +44,7 @@ def prompt(msg: str) -> str:
 
 
 def register() -> bool:
-    print("\n=== 開發者註冊 ===")
+    print(f"\n=== {menu_title('開發者註冊', None)} ===")
     username = prompt("帳號: ").strip()
     password = prompt("密碼: ").strip()
     resp = requests.post(f"{SERVER_URL}/dev/register", json={"username": username, "password": password})
@@ -50,7 +54,7 @@ def register() -> bool:
 
 
 def login() -> str:
-    print("\n=== 開發者登入 ===")
+    print(f"\n=== {menu_title('開發者登入', None)} ===")
     username = prompt("帳號: ").strip()
     password = prompt("密碼: ").strip()
     resp = requests.post(f"{SERVER_URL}/dev/login", json={"username": username, "password": password})
@@ -111,7 +115,7 @@ def choose_game(my_name: str) -> str:
 
 
 def upload_game_flow(dev_name: str):
-    print("\n=== 上架新遊戲 ===")
+    print(f"\n=== {menu_title('上架新遊戲', dev_name)} ===")
     name = prompt("遊戲名稱: ").strip()
     description = prompt("簡介: ").strip()
     version = prompt("版本號 (例如 1.0.0): ").strip() or "1.0.0"
@@ -166,7 +170,7 @@ def upload_game_flow(dev_name: str):
 
 
 def update_game_flow(dev_name: str):
-    print("\n=== 更新遊戲版本 ===")
+    print(f"\n=== {menu_title('更新遊戲版本', dev_name)} ===")
     game_id = choose_game(dev_name)
     if not game_id:
         return
@@ -187,7 +191,7 @@ def update_game_flow(dev_name: str):
 
 
 def remove_game_flow(dev_name: str):
-    print("\n=== 下架遊戲 ===")
+    print(f"\n=== {menu_title('下架遊戲', dev_name)} ===")
     game_id = choose_game(dev_name)
     if not game_id:
         return
@@ -222,6 +226,7 @@ def start_heartbeat(dev: str, stop_event: threading.Event, interval: int = 5):
 
 
 def view_games(dev_name: str):
+    print(f"\n=== {menu_title('我的遊戲', dev_name)} ===")
     games = [g for g in fetch_games() if g["developer"] == dev_name]
     if not games:
         print("沒有上架的遊戲")
@@ -254,7 +259,7 @@ def main():
 
 
 def run_flow():
-    print("=== Developer Client ===")
+    print(f"=== {menu_title('Developer Client', None)} ===")
     print(f"Server: {SERVER_URL}")
     if not ensure_server_available(SERVER_URL):
         print("無法連線伺服器，請確認位址或網路後再試")
@@ -277,7 +282,7 @@ def run_flow():
 
     while True:
         print(
-            "\n=== 開發者主選單 ===\n"
+            f"\n=== 開發者主選單 ({dev}) ===\n"
             "1) 我的遊戲\n"
             "2) 上架新遊戲\n"
             "3) 更新版本\n"

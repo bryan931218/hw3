@@ -16,6 +16,7 @@ from . import game_runtime
 STORAGE_ROOT = os.path.join(os.path.dirname(__file__), "storage", "games")
 ROOM_HEARTBEAT_TIMEOUT = 15
 FINISHED_ROOM_GRACE_SECONDS = 30 
+ONLINE_TIMEOUT = int(os.environ.get("ONLINE_TIMEOUT", "20"))  # seconds
 REQUIRED_MANIFEST_KEYS = ["entry", "min_players", "max_players", "server_entry"]
 
 
@@ -520,9 +521,13 @@ def get_room(db: Database, room_id: str) -> Optional[Dict]:
 
 def list_players(db: Database) -> List[Dict]:
     data = db.snapshot()
+    now = time.time()
+    sessions = (data.get("sessions") or {}).get("player") or {}
     players = []
     for name, info in data["players"].items():
-        players.append({"name": name, "online": info.get("online", False)})
+        last_seen = sessions.get(name)
+        online = bool(last_seen and now - float(last_seen) <= ONLINE_TIMEOUT)
+        players.append({"name": name, "online": online})
     return players
 
 

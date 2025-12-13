@@ -107,7 +107,10 @@ class DiceRaceGUI:
             self.finished = True
             self.roll_btn.config(state=tk.DISABLED)
             winners = state.get("winner", [])
-            if not winners:
+            if winners is None:
+                self.status.set("有玩家離開，遊戲中止")
+                self._append_log("有玩家離開，遊戲中止")
+            elif not winners:
                 self.status.set("平手")
                 self._append_log("平手")
             elif self.player in winners:
@@ -151,11 +154,21 @@ class DiceRaceGUI:
 
     def run(self):
         self.root.mainloop()
-        # 不在客戶端自動關房，避免其他玩家尚未離開時被關閉
+        self._leave_room()
 
     def _maybe_close_room(self):
         # 保留函式但不自動關閉房間，交由平台端統一管理
         return
+
+    def _leave_room(self):
+        if not self.platform_server or not self.room or not self.player:
+            return
+        try:
+            requests.post(
+                f"{self.platform_server}/rooms/{self.room}/leave", json={"player": self.player}, timeout=2
+            )
+        except Exception:
+            pass
 
     def _end_with_message(self, msg: str):
         self.status.set(msg)
@@ -167,6 +180,7 @@ class DiceRaceGUI:
             self.root.destroy()
         except Exception:
             pass
+        self._leave_room()
 
 
 def main():

@@ -1,6 +1,5 @@
 """
 多人 GUI 骰子賽跑（線上同步）：3-4 名玩家輪流按鈕擲骰，預設 5 回合。分數最高者獲勝。
-介面加入排行榜、回合提示與最新擲骰紀錄。
 """
 
 import argparse
@@ -87,9 +86,7 @@ class DiceRaceGUI:
     def _render_state(self, state: Dict):
         players = state.get("players", [])
         scores = state.get("scores", {})
-        # 依分數排序的排行榜（高到低）
         sorted_players = sorted(players, key=lambda p: scores.get(p, 0), reverse=True)
-        # 重建排行榜（所有玩家都顯示，確保每一端一致）
         for lbl in self.score_labels.values():
             lbl.destroy()
         self.score_labels.clear()
@@ -155,10 +152,6 @@ class DiceRaceGUI:
     def run(self):
         self.root.mainloop()
         self._leave_room()
-
-    def _maybe_close_room(self):
-        # 保留函式但不自動關閉房間，交由平台端統一管理
-        return
 
     def _leave_room(self):
         if not self.platform_server or not self.room or not self.player:

@@ -54,6 +54,10 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 
+def menu_title(title: str, username: Optional[str]) -> str:
+    return f"{title} ({username})" if username else title
+
+
 def get_input_timeout(prompt_text: str, timeout: float, newline_on_timeout: bool = True) -> Optional[str]:
     """
     在 timeout 秒內等待輸入，逾時回傳 None。Windows 使用 msvcrt，其他平台用 select。
@@ -283,7 +287,7 @@ def ensure_latest_version(player: str, game_id: str, target_version: Optional[st
 
 
 def register() -> bool:
-    print("\n=== 玩家註冊 ===")
+    print(f"\n=== {menu_title('玩家註冊', None)} ===")
     username = prompt("帳號: ").strip()
     password = prompt("密碼: ").strip()
     resp = requests.post(f"{SERVER_URL}/player/register", json={"username": username, "password": password}, timeout=REQUEST_TIMEOUT)
@@ -293,7 +297,7 @@ def register() -> bool:
 
 
 def login() -> str:
-    print("\n=== 玩家登入 ===")
+    print(f"\n=== {menu_title('玩家登入', None)} ===")
     username = prompt("帳號: ").strip()
     password = prompt("密碼: ").strip()
     resp = requests.post(f"{SERVER_URL}/player/login", json={"username": username, "password": password}, timeout=REQUEST_TIMEOUT)
@@ -308,14 +312,14 @@ def list_store_games():
         print("無法取得列表")
         return []
     games = resp.json().get("data", [])
-    print("\n=== 商城遊戲列表 ===")
+    print(f"\n=== {menu_title('商城遊戲列表', None)} ===")
     if not games:
         print("目前沒有可遊玩的遊戲")
         return games
     for idx, g in enumerate(games, 1):
         score = g.get("average_score")
         score_text = f"{score}/5" if score else "尚無評分"
-        print(f"{idx}. {g['name']} ({g['id']}) by {g['developer']} - {score_text} 最新 {g['latest_version']}")
+        print(f"{idx}. {g['name']} by {g['developer']} - {score_text} 最新 {g['latest_version']}")
     return games
 
 
@@ -374,7 +378,7 @@ def download_or_update(player: str):
 
 def list_installed_games(player: str):
     installed = load_installed(player)
-    print("\n=== 已安裝遊戲 ===")
+    print(f"\n=== {menu_title('已安裝遊戲', player)} ===")
     if not installed:
         print("尚未下載任何遊戲")
         return
@@ -419,7 +423,7 @@ def list_rooms(installed_games: Optional[List[str]] = None):
         r["game_name"] = detail.get("name") if detail else r.get("game_id")
         if r.get("max_players") in (None, 0, "?") and detail and detail.get("max_players"):
             r["max_players"] = detail.get("max_players")
-    print("\n=== 房間列表 ===")
+    print(f"\n=== {menu_title('房間列表', None)} ===")
     if not rooms:
         print("目前沒有房間")
     for r in rooms:
@@ -439,9 +443,9 @@ def list_rooms(installed_games: Optional[List[str]] = None):
 
 def join_room(player: str) -> Optional[Dict]:
     installed = load_installed(player)
-    rooms = list_rooms()  # 顯示所有房間，並提示是否已安裝
+    rooms = list_rooms(installed_games=list(installed.keys()))  # 顯示所有房間，並提示是否已安裝
     if not rooms:
-        print("沒有符合你已安裝遊戲的房間")
+        print("目前沒有房間")
         return None
     rid = prompt("輸入要加入的房號: ").strip()
     # 先取得房間資訊以核對版本，避免未更新就加入
@@ -530,7 +534,7 @@ def room_lobby(player: str, room: Dict):
         last_view = snapshot
         players_line = ", ".join(room_info.get("players", []))
         print(
-            f"\n=== 房間 {room_info['id']} ===\n"
+            f"\n=== 房間 {room_info['id']} ({player}) ===\n"
             f"遊戲: {room_info['game_id']} 版本: {room_info['version']}\n"
             f"房主: {host} | 玩家 ({len(room_info.get('players', []))}/{room_info.get('max_players','?')}): {players_line}\n"
             f"狀態: {status}"
@@ -820,7 +824,7 @@ def start_room_heartbeat(player: str, room_id: str, stop_event: threading.Event,
 
 
 def view_status(player: str):
-    print("\n=== 大廳狀態 ===")
+    print(f"\n=== {menu_title('大廳狀態', player)} ===")
     try:
         players_resp = requests.get(f"{SERVER_URL}/players", timeout=REQUEST_TIMEOUT)
         rooms_resp = requests.get(f"{SERVER_URL}/rooms", timeout=REQUEST_TIMEOUT)
@@ -882,7 +886,7 @@ def main():
 
 
 def run_flow():
-    print("=== Lobby Client ===")
+    print(f"=== {menu_title('Lobby Client', None)} ===")
     print(f"Server: {SERVER_URL}")
     if not ensure_server_available(SERVER_URL):
         print("無法連線伺服器")
@@ -906,7 +910,7 @@ def run_flow():
 
     while True:
         print(
-            "\n=== 大廳主選單 ===\n"
+            f"\n=== 大廳主選單 ({player}) ===\n"
             "1) 瀏覽遊戲\n"
             "2) 開始遊戲\n"
             "3) 狀態看板\n"
@@ -917,7 +921,7 @@ def run_flow():
         if choice == "1":
             while True:
                 print(
-                    "\n--- 商城 / 下載 ---\n"
+                    f"\n--- 商城 / 下載 ({player}) ---\n"
                     "1) 瀏覽商城\n"
                     "2) 查看遊戲詳細\n"
                     "3) 下載/更新遊戲\n"
@@ -940,7 +944,7 @@ def run_flow():
         elif choice == "2":
             while True:
                 print(
-                    "\n--- 開始遊戲 ---\n"
+                    f"\n--- 開始遊戲 ({player}) ---\n"
                     "1) 建立房間\n"
                     "2) 加入房間\n"
                     "3) 查看房間列表\n"
