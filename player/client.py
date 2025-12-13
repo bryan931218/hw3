@@ -126,11 +126,13 @@ def _iter_local_game_files(root_dir: str) -> List[str]:
     paths: List[str] = []
     for base, dirs, files in os.walk(root_dir):
         # Skip typical generated dirs
-        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        dirs[:] = [d for d in dirs if d not in {"__pycache__", "__MACOSX", ".git", ".idea", ".vscode"}]
         for name in files:
             if name.endswith((".pyc", ".pyo")):
                 continue
             if name in {".DS_Store"}:
+                continue
+            if name in {"Thumbs.db"}:
                 continue
             abs_path = os.path.join(base, name)
             rel = os.path.relpath(abs_path, root_dir).replace("\\", "/")
@@ -171,13 +173,36 @@ def verify_local_game_integrity(game_id: str, version: str, path: str) -> bool:
         print("無法驗證遊戲完整性（取不到伺服器端完整性資訊），請稍後再試")
         return False
     expected_files_raw: Dict[str, str] = expected.get("files") or {}
-    expected_files = {str(k).replace("\\", "/"): str(v) for k, v in expected_files_raw.items() if k}
+
+    def _ignore_integrity_path(name: str) -> bool:
+        normalized = (name or "").replace("\\", "/").lstrip("/")
+        if not normalized:
+            return True
+        parts = [p for p in normalized.split("/") if p]
+        if not parts:
+            return True
+        if parts[0] in {"__MACOSX", ".git", ".idea", ".vscode"}:
+            return True
+        if "__pycache__" in parts:
+            return True
+        base = parts[-1]
+        if base in {".DS_Store", "Thumbs.db"}:
+            return True
+        if base.endswith((".pyc", ".pyo")):
+            return True
+        return False
+
+    expected_files = {
+        str(k).replace("\\", "/"): str(v)
+        for k, v in expected_files_raw.items()
+        if k and not _ignore_integrity_path(str(k))
+    }
     if not isinstance(expected_files, dict) or not expected_files:
         print("無法驗證遊戲完整性（伺服器端回傳資料異常）")
         return False
 
     local_files = _iter_local_game_files(path)
-    expected_names = sorted((k or "").replace("\\", "/") for k in expected_files.keys() if k)
+    expected_names = sorted(expected_files.keys())
     # Strict comparison (ignore generated files on client)
     if local_files != expected_names:
         print("本地遊戲檔案清單與伺服器端不一致，需重新下載")

@@ -1,9 +1,0 @@
-{
-  "name": "Sample CLI Duel",
-  "entry": "main.py",
-  "type": "cli",
-  "description": "簡易雙人回合骰子遊戲範例",
-  "max_players": 2,
-  "min_players": 2,
-  "server_entry": "server.py"
-}

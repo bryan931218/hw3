@@ -318,6 +318,24 @@ def game_integrity(db: Database, game_id: str, version: Optional[str] = None) ->
     if not zip_path or not os.path.exists(zip_path):
         return False, "伺服器檔案遺失", None
     try:
+        def _ignore_integrity_path(name: str) -> bool:
+            normalized = (name or "").replace("\\", "/").lstrip("/")
+            if not normalized:
+                return True
+            parts = [p for p in normalized.split("/") if p]
+            if not parts:
+                return True
+            if parts[0] in {"__MACOSX", ".git", ".idea", ".vscode"}:
+                return True
+            if "__pycache__" in parts:
+                return True
+            base = parts[-1]
+            if base in {".DS_Store", "Thumbs.db"}:
+                return True
+            if base.endswith((".pyc", ".pyo")):
+                return True
+            return False
+
         file_hashes: Dict[str, str] = {}
         with zipfile.ZipFile(zip_path, "r") as zf:
             for info in zf.infolist():
@@ -325,6 +343,8 @@ def game_integrity(db: Database, game_id: str, version: Optional[str] = None) ->
                     continue
                 name = (info.filename or "").replace("\\", "/")
                 if not name:
+                    continue
+                if _ignore_integrity_path(name):
                     continue
                 content = zf.read(info)
                 file_hashes[name] = hashlib.sha256(content).hexdigest()
