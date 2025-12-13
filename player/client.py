@@ -607,7 +607,15 @@ def start_room(player: str, room_id: str) -> Optional[Dict]:
 def mark_room_played(player: str, room_id: str) -> bool:
     try:
         resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/played", json={"player": player}, timeout=8)
-        data = resp.json()
+        # Backward compatibility: older servers don't have /played; they used to record plays at /start.
+        if resp.status_code == 404:
+            print("[警告] 伺服器不支援 /rooms/<id>/played（版本較舊），將以舊流程繼續。")
+            return True
+        try:
+            data = resp.json()
+        except Exception:
+            print(f"[警告] 記錄遊玩次數失敗（HTTP {resp.status_code}，回應非 JSON）")
+            return False
         if not data.get("success"):
             msg = data.get("message") or "記錄遊玩次數失敗"
             print(f"[警告] {msg}")
