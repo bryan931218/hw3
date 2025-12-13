@@ -61,15 +61,13 @@ python run_player.py
 - 每個遊戲資料夾需包含 `manifest.json`，至少具備：
   ```json
   {
-    "name": "Game Name",
     "entry": "main.py",
-    "type": "cli",
-    "description": "short intro",
     "max_players": 2,
     "min_players": 2,
     "server_entry": "server.py"
   }
   ```
+- 遊戲的 `name` / `description` 由開發者上架時在 Developer Client 填入（不需寫在 manifest）。
 - `entry` 指向可執行的 Python 檔案。玩家客戶端啟動時會以 `python <entry> --player <name> --server <platform_url> --game-server <game_server_url> --room <room_id>` 執行。
 - `server_entry`（可選）：若有提供，平台在房間啟動時會解壓並啟動此檔案作為獨立 game server（傳入 `--room <id> --port <port>`），讓遊戲邏輯完全由上傳檔案提供，平台不內建遊戲邏輯。
 - 開發者可從 `template/` 複製作為腳手架，或直接上傳自己的資料夾。
@@ -86,33 +84,14 @@ python run_player.py
    - 建立房間 → 啟動房間遊戲（會執行本地 `main.py`）→ 返回後對遊戲評分留言
 4) 可再開第二/第三個玩家客戶端，模擬多人房間/版本差異；多人 GUI 範例用 `developer/games/sample_multi_gui`。
 
-## Demo 事前準備與部署
-1) 推上 GitHub：包含 server / developer / player；README 保持最新。
-2) Linux 部署（例如 linux1.cs.nycu.edu.tw）：
+## Linux 部署：
    ```bash
    git clone <repo_url> hw3 && cd hw3
    python3 -m venv .venv && source .venv/bin/activate
    pip install -r requirements.txt
    export PORT=5000
    export GAME_SERVER_HOST=0.0.0.0
-   export GAME_SERVER_PUBLIC_HOST=linux1.cs.nycu.edu.tw   # 或實際對外 IP
+   export GAME_SERVER_PUBLIC_HOST=linux1.cs.nycu.edu.tw
    python run_server.py
    ```
-   - Demo 前如需清空資料：`python -m server.reset_data`
-3) 助教端操作：依 README 只需 `python run_server.py`、`python run_developer.py`、`python run_player.py`，不需手動輸入其他指令。
-4) 若網段/防火牆限制 game server 連線，請確認對外 IP 與 port 已開放，並設定 `GAME_SERVER_PUBLIC_HOST`。
-
-## 重要設計說明
-- **帳號分流**：開發者與玩家帳號獨立管理；登入後會驗證身分。
-- **版本管理**：每次上架/更新都會保存版本號及檔案路徑；玩家下載時自動取得最新版本。
-- **房間邏輯**：建立房間時綁定遊戲與版本，檢查人數上限/下限，開始遊戲時標記玩家已玩過以啟用評分資格。
-- **資料持久化**：所有元資料存放於 `server/data.json`，伺服器重啟不會遺失；遊戲封包放在 `server/storage/games/`。
-- **Menu-driven**：所有操作均以選單進行，不需額外命令列參數（除非改變伺服器位址）。
-- **大廳狀態**：`/rooms` 提供房間列表、`/players` 提供玩家列表、`/games` 提供上架遊戲列表，方便大廳展示。
-- **房間生命週期**：玩家端啟動遊戲後會呼叫 `/rooms/<id>/close` 關閉房間；房間列表於玩家端會依已安裝遊戲做篩選，避免看到無法加入的房間。
-
-## 限制與後續可做
-- 目前遊戲啟動為本地執行樣板（`manifest.entry`），若要支援更複雜多人同步，可在該入口內自行實作與伺服器溝通。
-- Plugin 清單/安裝可透過擴充 API 完成；目前未預設範例 Plugin。
-
-Enjoy hacking!
+   - 清空資料：`python -m server.reset_data`

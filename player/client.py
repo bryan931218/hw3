@@ -18,6 +18,14 @@ DOWNLOAD_ROOT = os.path.join(os.path.dirname(__file__), "downloads")
 SERVER_URL = os.environ.get("GAME_SERVER_URL", "http://linux1.cs.nycu.edu.tw:5000")
 
 
+def ensure_server_available(url: str) -> bool:
+    try:
+        resp = requests.get(f"{url}/games", timeout=3)
+        return resp.ok
+    except Exception:
+        return False
+
+
 def prompt(msg: str) -> str:
     try:
         return input(msg)
@@ -68,7 +76,6 @@ def get_input_timeout(prompt_text: str, timeout: float, newline_on_timeout: bool
                         buf += ch.encode("utf-8")
                         print(ch, end="", flush=True)
                 time.sleep(0.05)
-            # 取消逾時自動換行
             return None
         except Exception:
             return None
@@ -291,6 +298,9 @@ def create_room(player: str):
         room = data["data"]
         print(f"房號 {room['id']} 遊戲 {room['game_id']} 版本 {room['version']}")
         return room
+    # 若房間數量已滿，建議直接查看現有房間
+    if "上限" in data.get("message", ""):
+        list_rooms()
     return None
 
 
@@ -300,26 +310,34 @@ def list_rooms(installed_games: Optional[List[str]] = None):
         print("無法取得房間列表")
         return []
     rooms = resp.json().get("data", [])
-    if installed_games is not None:
-        rooms = [r for r in rooms if r["game_id"] in installed_games]
     # 若缺少 max_players，嘗試從遊戲詳細補齊，避免顯示 ?.
     for r in rooms:
-        if r.get("max_players") in (None, 0, "?"):
-            detail = fetch_game_detail(r.get("game_id"))
-            if detail and detail.get("max_players"):
-                r["max_players"] = detail.get("max_players")
+        detail = fetch_game_detail(r.get("game_id"))
+        r["game_name"] = detail.get("name") if detail else r.get("game_id")
+        if r.get("max_players") in (None, 0, "?") and detail and detail.get("max_players"):
+            r["max_players"] = detail.get("max_players")
     print("\n=== 房間列表 ===")
     if not rooms:
         print("目前沒有房間")
     for r in rooms:
+        if installed_games is not None:
+            # 標示玩家是否已安裝，方便決策
+            installed_flag = "已安裝" if r["game_id"] in installed_games else "未安裝"
+        else:
+            installed_flag = ""
         max_p = r.get("max_players") or "?"
-        print(f"- 房號 {r['id']} | 遊戲 {r['game_id']} | 狀態 {r['status']} | 玩家 {len(r['players'])}/{max_p}")
+        name = r.get("game_name", r.get("game_id"))
+        suffix = f" | {installed_flag}" if installed_flag else ""
+        print(
+            f"- 房號 {r['id']} | 遊戲 {name} ({r['game_id']}) | 狀態 {r['status']} "
+            f"| 玩家 {len(r['players'])}/{max_p}{suffix}"
+        )
     return rooms
 
 
 def join_room(player: str) -> Optional[Dict]:
     installed = load_installed(player)
-    rooms = list_rooms(list(installed.keys()))
+    rooms = list_rooms()  # 顯示所有房間，並提示是否已安裝
     if not rooms:
         print("沒有符合你已安裝遊戲的房間")
         return None
@@ -391,6 +409,34 @@ def room_lobby(player: str, room: Dict):
     launched = False
     last_view = None
     last_reason = None
+
+    def render(room_info: Dict, status: str, host: str, force: bool = False) -> bool:
+        nonlocal last_view
+        snapshot = json.dumps(
+            {
+                "status": status,
+                "players": room_info.get("players", []),
+                "game": room_info.get("game_id"),
+                "version": room_info.get("version"),
+            },
+            sort_keys=True,
+        )
+        if not force and snapshot == last_view:
+            return False
+        last_view = snapshot
+        players_line = ", ".join(room_info.get("players", []))
+        print(
+            f"\n=== 房間 {room_info['id']} ===\n"
+            f"遊戲: {room_info['game_id']} 版本: {room_info['version']}\n"
+            f"房主: {host} | 玩家 ({len(room_info.get('players', []))}/{room_info.get('max_players','?')}): {players_line}\n"
+            f"狀態: {status}"
+        )
+        if player == host:
+            print("1) 開始遊戲  2) 離開房間")
+        else:
+            print("1) 離開房間")
+        return True
+
     try:
         while True:
             latest = fetch_room(room["id"])
@@ -409,43 +455,27 @@ def room_lobby(player: str, room: Dict):
                     room["max_players"] = detail.get("max_players")
             status = room.get("status")
             host = room.get("host")
-            snapshot = json.dumps(
-                {
-                    "status": status,
-                    "players": room.get("players", []),
-                    "game": room.get("game_id"),
-                    "version": room.get("version"),
-                },
-                sort_keys=True,
-            )
-            needs_render = snapshot != last_view
-            if needs_render:
-                last_view = snapshot
-                clear_screen()
-                print(
-                    f"\n=== 房間 {room['id']} ===\n"
-                    f"遊戲: {room['game_id']} 版本: {room['version']}\n"
-                    f"房主: {host} | 玩家 ({len(room.get('players', []))}/{room.get('max_players','?')}): {', '.join(room.get('players', []))}\n"
-                    f"狀態: {status}"
-                )
-                if player == host:
-                    print("1) 開始遊戲  2) 離開房間")
-                else:
-                    print("1) 離開房間")
+            rendered = render(room, status, host)
             if status == "in_game" and not launched:
                 launched = True
-                launch_game(player, room["id"], room["game_id"])
-                return
+                ok = launch_game(player, room["id"], room["game_id"])
+                if ok:
+                    return
+                launched = False  # 啟動失敗，留在房間畫面
+                continue
             if status == "finished":
                 reason = room.get("ended_reason") or "房間已結束"
                 print(f"房間已結束：{reason}")
                 return
-            # 非阻塞輸入，每 2 秒自動刷新一次狀態；只在畫面刷新時顯示提示字
-            if needs_render:
-                print("選擇 > ", end="", flush=True)
+            if rendered:
+                print("選擇: ", end='', flush=True)
             choice = get_input_timeout("", 2, newline_on_timeout=False)
             if choice is None:
                 continue
+            choice = (choice or "").strip()
+            if not choice:
+                continue
+            choice = choice[:1] 
             if player == host:
                 if choice == "1":
                     started = start_room(player, room["id"])
@@ -457,23 +487,28 @@ def room_lobby(player: str, room: Dict):
                     return
                 else:
                     print("請輸入 1-2")
+                    rendered = render(room, status, host, force=True)
+                    if rendered:
+                        print("選擇: ", end='', flush=True)
             else:
                 if choice == "1":
                     leave_room(player, room["id"])
                     return
                 else:
                     print("請輸入 1")
+                    rendered = render(room, status, host, force=True)
+                    if rendered:
+                        print("選擇: ", end='', flush=True)
     finally:
         hb_stop.set()
 
 
-def launch_game(player: str, room_id: str, game_id: str):
+def launch_game(player: str, room_id: str, game_id: str) -> bool:
     installed = load_installed(player)
     info = installed.get(game_id)
     if not info:
         print("尚未下載遊戲")
-        return
-    # 進入遊戲前再驗證版本（以房間版本為準）
+        return False
     room = fetch_room(room_id)
     if room:
         target_ver = room.get("version")
@@ -484,13 +519,16 @@ def launch_game(player: str, room_id: str, game_id: str):
     path = info["path"]
     manifest = os.path.join(path, "manifest.json")
     entry = "main.py"
+    has_game_server = False
     if os.path.exists(manifest):
         with open(manifest, "r", encoding="utf-8") as f:
-            entry = json.load(f).get("entry", "main.py")
+            manifest_data = json.load(f)
+            entry = manifest_data.get("entry", "main.py")
+            has_game_server = bool(manifest_data.get("server_entry"))
     script = os.path.join(path, entry)
     if not os.path.exists(script):
         print("找不到遊戲入口，請確認下載內容")
-        return
+        return False
     # 取得房間詳細以取得 game_server 端點，若沒有則回退平台伺服器
     gs_url = SERVER_URL
     try:
@@ -517,10 +555,34 @@ def launch_game(player: str, room_id: str, game_id: str):
                 pass
     except Exception:
         pass
+    # 簡單預檢 game server：僅對需要 server_entry 的遊戲做 TCP 連線檢查
+    if has_game_server:
+        try:
+            parsed = urlparse(gs_url)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 80
+            import socket
+
+            with socket.create_connection((host, port), timeout=2):
+                pass
+        except Exception as exc:
+            print(f"無法連線到遊戲伺服器，請稍後再試：{exc}")
+            return False
     print(f"啟動遊戲 {info.get('name', game_id)} (版本 {info['version']})")
     cmd = [sys.executable, script, "--player", player, "--server", SERVER_URL, "--room", room_id]
     cmd.extend(["--game-server", gs_url])
-    subprocess.call(cmd)
+    try:
+        ret = subprocess.call(cmd)
+        if ret != 0:
+            print(f"遊戲啟動失敗 (exit {ret})")
+            return False
+    except FileNotFoundError:
+        print("找不到 Python 或遊戲檔案，啟動失敗")
+        return False
+    except Exception as exc:
+        print(f"遊戲啟動失敗: {exc}")
+        return False
+    return True
 
 
 def rate_game(player: str):
@@ -637,15 +699,19 @@ def view_status(player: str):
         for p in players:
             status = "在線" if p.get("online") else "離線"
             print(f"- {p.get('name')} [{status}]")
-    installed = load_installed(player)
     if rooms_resp.ok:
-        rooms = rooms_resp.json().get("data", [])
-        rooms = [r for r in rooms if r["game_id"] in installed]
-        print("\n房間列表:")
+        rooms = rooms_resp.json().get("data", []) or []
+        print("\n房間列表 (所有遊戲):")
         if not rooms:
             print("- 無房間")
         for r in rooms:
-            print(f"- 房號 {r['id']} | 遊戲 {r['game_id']} | 狀態 {r['status']} | 人數 {len(r['players'])}")
+            detail = fetch_game_detail(r.get("game_id")) or {}
+            game_name = detail.get("name", r.get("game_id"))
+            max_p = r.get("max_players") or detail.get("max_players") or "?"
+            print(
+                f"- 房號 {r['id']} | 遊戲 {game_name} ({r.get('game_id')}) "
+                f"| 狀態 {r['status']} | 玩家 {len(r.get('players', []))}/{max_p} | 房主 {r.get('host','?')}"
+            )
     if games_resp.ok:
         games = games_resp.json().get("data", [])
         print("\n上架遊戲列表:")
@@ -681,6 +747,9 @@ def main():
 def run_flow():
     print("=== Lobby Client ===")
     print(f"Server: {SERVER_URL}")
+    if not ensure_server_available(SERVER_URL):
+        print("無法連線伺服器")
+        sys.exit(1)
     player = ""
     current_room = None
     hb_stop = threading.Event()
@@ -696,14 +765,13 @@ def run_flow():
         else:
             print("無效選擇")
 
-    # 啟動心跳，避免逾時被登出
     start_heartbeat(player, hb_stop)
 
     while True:
         print(
             "\n=== 大廳主選單 ===\n"
-            "1) 商城 / 下載\n"
-            "2) 房間流程\n"
+            "1) 瀏覽遊戲\n"
+            "2) 開始遊戲\n"
             "3) 狀態看板\n"
             "4) 評分與評論\n"
             "5) 我的紀錄\n"
@@ -736,7 +804,7 @@ def run_flow():
         elif choice == "2":
             while True:
                 print(
-                    "\n--- 房間流程 ---\n"
+                    "\n--- 開始遊戲 ---\n"
                     "1) 建立房間\n"
                     "2) 加入房間\n"
                     "3) 查看房間列表\n"
@@ -754,11 +822,11 @@ def run_flow():
                         room_lobby(player, current_room)
                         current_room = None
                 elif sub == "3":
-                    list_rooms(list(load_installed(player).keys()))
+                    list_rooms() 
                 elif sub == "4":
                     break
                 else:
-                    print("請輸入 1-5")
+                    print("請輸入 1-4")
         elif choice == "3":
             view_status(player)
         elif choice == "4":

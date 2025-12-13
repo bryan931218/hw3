@@ -1,0 +1,9 @@
+{
+  "name": "Online Tetris",
+  "entry": "main.py",
+  "type": "gui",
+  "description": "雙人對戰俄羅斯方塊，平台啟動時會連線到 game server。",
+  "max_players": 2,
+  "min_players": 2,
+  "server_entry": "server.py"
+}

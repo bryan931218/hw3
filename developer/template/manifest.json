@@ -1,8 +1,6 @@
 {
-  "name": "Your Game Name",
   "entry": "main.py",
-  "type": "cli",
-  "description": "Describe your game here",
   "max_players": 2,
-  "min_players": 2
+  "min_players": 1,
+  "server_entry": ""
 }

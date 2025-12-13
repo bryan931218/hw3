@@ -1,8 +1,11 @@
 import base64
+import io
+import json
 import os
 import re
 import shutil
 import time
+import zipfile
 from typing import Dict, List, Optional, Tuple
 import requests
 
@@ -12,6 +15,7 @@ from . import game_runtime
 STORAGE_ROOT = os.path.join(os.path.dirname(__file__), "storage", "games")
 ROOM_HEARTBEAT_TIMEOUT = 15  # seconds
 FINISHED_ROOM_GRACE_SECONDS = 30  # keep ended rooms shortly for users to see the reason
+REQUIRED_MANIFEST_KEYS = ["entry", "min_players", "max_players", "server_entry"]
 
 
 def _touch_room_heartbeat(room: Dict, player: str) -> None:
@@ -65,6 +69,59 @@ def _save_game_blob(game_id: str, version: str, file_data_b64: str) -> str:
     return path
 
 
+def _validate_upload(file_data_b64: str) -> Tuple[bool, str, Optional[Dict]]:
+    """
+    Basic validation for uploaded game bundle:
+    - manifest.json must exist with required keys
+    - entry and server_entry (if provided) must exist in zip
+    """
+    try:
+        raw = base64.b64decode(file_data_b64)
+    except Exception:
+        return False, "檔案格式錯誤（base64 解碼失敗）", None
+    try:
+        buffer = io.BytesIO(raw)
+        with zipfile.ZipFile(buffer, "r") as zf:
+            if "manifest.json" not in zf.namelist():
+                return False, "缺少 manifest.json", None
+            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+            missing = [k for k in REQUIRED_MANIFEST_KEYS if k not in manifest]
+            if missing:
+                return False, f"manifest 缺少欄位: {', '.join(missing)}", None
+            entry = manifest.get("entry")
+            if not isinstance(entry, str) or not entry.strip():
+                return False, "entry 必須為字串", None
+            entry = entry.strip().replace("\\", "/")
+            manifest["entry"] = entry
+            if entry not in zf.namelist():
+                return False, f"找不到入口檔 {entry}", None
+            server_entry = manifest.get("server_entry", "")
+            if server_entry is None:
+                server_entry = ""
+            if not isinstance(server_entry, str):
+                return False, "server_entry 必須為字串", None
+            server_entry = server_entry.strip().replace("\\", "/")
+            manifest["server_entry"] = server_entry
+            if server_entry and server_entry not in zf.namelist():
+                return False, f"找不到 server_entry: {server_entry}", None
+            try:
+                manifest["min_players"] = int(manifest.get("min_players", 0))
+                manifest["max_players"] = int(manifest.get("max_players", 0))
+            except (TypeError, ValueError):
+                return False, "min_players/max_players 必須為整數", None
+            if manifest["min_players"] <= 0 or manifest["max_players"] <= 0:
+                return False, "玩家數需大於 0", None
+            if manifest["min_players"] > manifest["max_players"]:
+                return False, "min_players 不可大於 max_players", None
+            return True, "ok", manifest
+    except zipfile.BadZipFile:
+        return False, "上傳檔案不是有效的 zip", None
+    except json.JSONDecodeError:
+        return False, "manifest.json 解析失敗", None
+    except Exception as exc:
+        return False, f"檔案驗證失敗: {exc}", None
+
+
 def reset_rooms(db: Database) -> Tuple[bool, str]:
     def _reset(data: Dict) -> Tuple[bool, str]:
         for rid in list(data.get("rooms", {}).keys()):
@@ -81,12 +138,19 @@ def create_game(
     developer: str,
     name: str,
     description: str,
-    game_type: str,
-    min_players: int,
-    max_players: int,
     version: str,
     file_data_b64: str,
+    game_type: str = "",
 ) -> Tuple[bool, str, Optional[Dict]]:
+    ok, msg, manifest = _validate_upload(file_data_b64)
+    if not ok:
+        return False, msg, None
+    m_min = manifest.get("min_players")
+    m_max = manifest.get("max_players")
+    m_type = manifest.get("type", "")
+    if game_type and m_type and game_type != m_type:
+        return False, "遊戲類型與 manifest 不一致，請修正後再上傳", None
+    resolved_type = game_type or m_type or "custom"
     slug = _slugify(name)
 
     def _create(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
@@ -100,9 +164,9 @@ def create_game(
             "name": name,
             "developer": developer,
             "description": description,
-            "game_type": game_type,
-            "min_players": min_players,
-            "max_players": max_players,
+            "game_type": resolved_type,
+            "min_players": m_min,
+            "max_players": m_max,
             "active": True,
             "versions": [
                 {
@@ -130,6 +194,9 @@ def update_game_version(
     file_data_b64: str,
     notes: str = "",
 ) -> Tuple[bool, str, Optional[Dict]]:
+    ok, msg, manifest = _validate_upload(file_data_b64)
+    if not ok:
+        return False, msg, None
     def _update(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
         game = data["games"].get(game_id)
         if not game:
@@ -138,6 +205,11 @@ def update_game_version(
             return False, "無權限更新此遊戲", None
         if not game.get("active", True):
             return False, "遊戲已下架", None
+        # 確保與原始設定一致
+        if manifest.get("type") and game.get("game_type") and manifest.get("type") != game.get("game_type"):
+            return False, "遊戲類型與原上架設定不一致", None
+        if manifest.get("min_players") != game.get("min_players") or manifest.get("max_players") != game.get("max_players"):
+            return False, "玩家人數設定與原上架設定不一致", None
         if any(v["version"] == version for v in game["versions"]):
             return False, "版本重複，請使用新的版本號", None
         file_path = _save_game_blob(game_id, version, file_data_b64)
@@ -234,8 +306,18 @@ def create_room(db: Database, host: str, game_id: str) -> Tuple[bool, str, Optio
         game = data["games"].get(game_id)
         if not game or not game.get("active", True):
             return False, "遊戲不存在或已下架", None
+        # 若遊戲被標記不接受新房間（例如維護中），拒絕建立
+        if not game.get("accept_new_rooms", True):
+            return False, "此遊戲暫不接受建立新房間", None
         if host not in data["players"]:
             return False, "玩家不存在", None
+        # 可設定最大房間數量（例如避免 Lobby 超載）
+        try:
+            max_rooms = int(os.environ.get("MAX_ROOMS", "0"))
+        except ValueError:
+            max_rooms = 0
+        if max_rooms > 0 and len(data.get("rooms", {})) >= max_rooms:
+            return False, "目前房間數已達上限，請加入其他房間", None
         room_id = str(data["next_ids"]["room"])
         data["next_ids"]["room"] += 1
         room = {
@@ -395,7 +477,6 @@ def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Opti
             return False, "只有房主可開始遊戲", None
         if len(room["players"]) < game["min_players"]:
             return False, "人數不足", None
-        # 啟動對應遊戲的獨立 game server（若 manifest 指定 server_entry）
         version_rec = next((v for v in game["versions"] if v["version"] == room["version"]), None)
         if not version_rec:
             return False, "找不到版本檔案", None
@@ -410,7 +491,6 @@ def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Opti
             public_host = os.environ.get("GAME_SERVER_PUBLIC_HOST", os.environ.get("HOST", "127.0.0.1"))
             public_port = os.environ.get("PORT", "5000")
             room["game_server"] = {"host": public_host, "port": public_port}
-        # 預先註冊房間內所有玩家到 game server，避免只有房主進入遊戲
         try:
             host = room["game_server"]["host"]
             port = room["game_server"]["port"]

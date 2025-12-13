@@ -7,7 +7,6 @@ from .database import Database
 db = Database(os.path.join(os.path.dirname(__file__), "data.json"))
 app = Flask(__name__)
 
-# 開機時清空所有舊有房間，避免殘留佔用
 try:
     game_manager.reset_rooms(db)
 except Exception:
@@ -98,25 +97,19 @@ def upload_game():
     if not auth.is_logged_in("developer", dev):
         return _resp(False, "請先登入開發者帳號", status=401)
     auth.heartbeat("developer", dev)
-    required = ["name", "description", "game_type", "min_players", "max_players", "version", "file_data"]
+    required = ["name", "description", "version", "file_data"]
     missing = [k for k in required if body.get(k) in (None, "")]
     if missing:
         return _resp(False, f"缺少欄位: {', '.join(missing)}", status=400)
-    try:
-        min_players = int(body["min_players"])
-        max_players = int(body["max_players"])
-    except (TypeError, ValueError):
-        return _resp(False, "玩家數量需為整數", status=400)
+    game_type = body.get("game_type", "")
     ok, msg, data = game_manager.create_game(
         db,
         dev,
         body["name"],
         body["description"],
-        body["game_type"],
-        min_players,
-        max_players,
         body["version"],
         body["file_data"],
+        game_type,
     )
     return _resp(ok, msg, data, status=201 if ok else 400)
 

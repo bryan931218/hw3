@@ -1,0 +1,9 @@
+{
+  "name": "Tetris Online Duel",
+  "entry": "main.py",
+  "type": "gui",
+  "description": "簡化版雙人線上俄羅斯方塊對戰示例，需搭配獨立 game server。",
+  "max_players": 2,
+  "min_players": 2,
+  "server_entry": "server.py"
+}

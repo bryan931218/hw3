@@ -1,0 +1,8 @@
+{
+  "name": "Local Dice Duel (No Server)",
+  "entry": "main.py",
+  "type": "cli",
+  "description": "雙人熱座骰子對戰，遊戲邏輯全在客戶端，不需獨立 game server",
+  "max_players": 2,
+  "min_players": 1
+}

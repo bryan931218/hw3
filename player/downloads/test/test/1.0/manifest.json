@@ -1,0 +1,9 @@
+{
+  "name": "Minimal Hello Game",
+  "entry": "main.py",
+  "type": "cli",
+  "description": "最簡單的範例：顯示歡迎訊息並回到大廳，不需 game server。",
+  "max_players": 1,
+  "min_players": 1,
+  "server_entry": ""
+}

@@ -23,7 +23,14 @@ def main():
         print(f"目標目錄已存在：{dst}")
         sys.exit(1)
     shutil.copytree(src, dst)
-    print(f"已建立遊戲骨架於 {dst}，請修改 manifest.json 與 main.py 後再用 Developer Client 上架。")
+    print(
+        f"已建立遊戲骨架於 {dst}。\n"
+        "- 請先編輯 manifest.json（填入 entry/min_players/max_players，必要時填 server_entry）。\n"
+        "- 遊戲名稱與簡介會在 Developer Client 上架時填入（不需寫在 manifest）。\n"
+        "- 確認 entry 指向的檔案存在，若需要獨立 game server 再提供 server_entry。\n"
+        "- main.py 內有啟動參數說明，可直接開始實作遊戲邏輯。\n"
+        "完成後再用 Developer Client 上架。"
+    )
 
 
 if __name__ == "__main__":

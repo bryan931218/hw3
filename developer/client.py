@@ -13,6 +13,14 @@ SERVER_URL = os.environ.get("GAME_SERVER_URL", "http://linux1.cs.nycu.edu.tw:500
 BASE_GAME_DIR = os.path.join(os.path.dirname(__file__), "games")
 
 
+def ensure_server_available(url: str) -> bool:
+    try:
+        resp = requests.get(f"{url}/games", timeout=3)
+        return resp.ok
+    except Exception:
+        return False
+
+
 def zip_folder(folder_path: str) -> str:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -106,22 +114,49 @@ def upload_game_flow(dev_name: str):
     print("\n=== 上架新遊戲 ===")
     name = prompt("遊戲名稱: ").strip()
     description = prompt("簡介: ").strip()
-    game_type = prompt("類型 (cli/gui/multi): ").strip() or "cli"
-    min_players = prompt("最少玩家數: ").strip() or "2"
-    max_players = prompt("最多玩家數: ").strip() or "2"
     version = prompt("版本號 (例如 1.0.0): ").strip() or "1.0.0"
     path = choose_local_folder()
     if not os.path.isdir(path):
         print("路徑不存在")
+        return
+    # manifest 由遊戲資料夾提供：entry/min_players/max_players/server_entry
+    manifest_path = os.path.join(path, "manifest.json")
+    if not os.path.exists(manifest_path):
+        print("缺少 manifest.json，請先在遊戲資料夾內建立。")
+        return
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    except Exception as exc:
+        print(f"manifest.json 解析失敗：{exc}")
+        return
+    required_keys = ["entry", "min_players", "max_players", "server_entry"]
+    missing = [k for k in required_keys if k not in manifest]
+    if missing:
+        print(f"manifest.json 缺少欄位: {', '.join(missing)}")
+        return
+    entry = manifest.get("entry")
+    if not entry or not os.path.exists(os.path.join(path, entry)):
+        print(f"找不到入口檔 {entry}，請確認 manifest.json 與檔案內容。")
+        return
+    server_entry = (manifest.get("server_entry") or "").strip()
+    if server_entry and not os.path.exists(os.path.join(path, server_entry)):
+        print(f"找不到 server_entry {server_entry}，請確認 manifest.json 與檔案內容。")
+        return
+    try:
+        min_players = int(manifest.get("min_players"))
+        max_players = int(manifest.get("max_players"))
+    except (TypeError, ValueError):
+        print("manifest.json 的 min_players/max_players 必須為整數")
+        return
+    if min_players <= 0 or max_players <= 0 or min_players > max_players:
+        print("manifest.json 的玩家人數設定不合法（需 >0 且 min<=max）")
         return
     file_data = zip_folder(path)
     payload = {
         "developer": dev_name,
         "name": name,
         "description": description,
-        "game_type": game_type,
-        "min_players": int(min_players),
-        "max_players": int(max_players),
         "version": version,
         "file_data": file_data,
     }
@@ -221,6 +256,9 @@ def main():
 def run_flow():
     print("=== Developer Client ===")
     print(f"Server: {SERVER_URL}")
+    if not ensure_server_available(SERVER_URL):
+        print("無法連線伺服器，請確認位址或網路後再試")
+        sys.exit(1)
     dev = ""
     hb_stop = threading.Event()
     while not dev:

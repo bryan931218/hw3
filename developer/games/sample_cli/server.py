@@ -33,7 +33,6 @@ def get_state():
             state["scores"].setdefault(p, 0)
         if len(state["players"]) >= 2 and state["status"] == "waiting":
             state["status"] = "in_game"
-    # 修正 turn_index 不超界
     if state["players"]:
         state["turn_index"] = state["turn_index"] % len(state["players"])
     return jsonify({"success": True, "data": state})
@@ -54,7 +53,6 @@ def do_action():
             state["status"] = "in_game"
         else:
             return jsonify({"success": False, "message": "等待另一位玩家加入", "data": state})
-    # turn_index 安全防呆
     if state["players"]:
         state["turn_index"] = state["turn_index"] % len(state["players"])
     if player != state["players"][state["turn_index"]]:
