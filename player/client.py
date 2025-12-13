@@ -432,7 +432,6 @@ def store_game_menu(player: str, game: Dict):
         return
     detail = fetch_game_detail(gid, player=player) or game
     while True:
-        # Always refresh detail/stats on page entry and after returning from other actions.
         detail = fetch_game_detail(gid, player=player) or detail or game
         installed = load_installed(player)
         info = installed.get(gid)
@@ -444,11 +443,24 @@ def store_game_menu(player: str, game: Dict):
         print(f"簡介: {detail.get('description', '-')}")
         print(f"最新版本: {detail.get('latest_version', '-')}")
         print(f"人數: {detail.get('min_players', '?')}-{detail.get('max_players', '?')}")
+        avg = detail.get("average_score")
+        ratings = detail.get("ratings") or []
+        if avg is None:
+            print(f"評分: 尚無評分（{len(ratings)} 則評論）")
+        else:
+            print(f"評分: {avg}/5（{len(ratings)} 則評論）")
         print(f"遊玩次數: {plays}")
         if info:
             print(f"安裝狀態: 已安裝（{info.get('version', '-') }）")
         else:
             print("安裝狀態: 未安裝")
+        if ratings:
+            print("\n評論:")
+            for r in ratings:
+                who = r.get("player", "?")
+                sc = r.get("score", "?")
+                cm = r.get("comment", "")
+                print(f"- {who} 給 {sc} 分: {cm}")
         print()
         print("1) 更新遊戲" if info else "1) 下載遊戲")
         print("2) 評論遊戲" if plays > 0 else "2) 評論遊戲")

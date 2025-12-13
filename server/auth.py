@@ -6,7 +6,7 @@ from .database import Database
 HEARTBEAT_TIMEOUT = int(
     os.environ.get(
         "HEARTBEAT_TIMEOUT",
-        os.environ.get("SESSION_TIMEOUT", os.environ.get("ONLINE_TIMEOUT", "30")),
+        os.environ.get("SESSION_TIMEOUT", os.environ.get("ONLINE_TIMEOUT", "15")),
     )
 )
 

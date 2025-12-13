@@ -38,7 +38,6 @@ python run_player.py
    python3 -m venv .venv && source .venv/bin/activate
    pip install -r requirements.txt
    export PORT=5000
-   export GAME_SERVER_HOST=0.0.0.0
    export GAME_SERVER_PUBLIC_HOST=linux1.cs.nycu.edu.tw
    python run_server.py
    ```
