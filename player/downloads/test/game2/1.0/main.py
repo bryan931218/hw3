@@ -171,6 +171,7 @@ class TicTacToeGUI:
                 self.status.set(f"輪到 {self.turn_player}{your_turn}")
                 if your_turn:
                     self._append_log("輪到你")
+        # 更新棋盤文字
         for r in range(3):
             for c in range(3):
                 val = board[r][c] if r < len(board) and c < len(board[r]) else None

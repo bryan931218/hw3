@@ -27,6 +27,7 @@ def check_win(board, symbol):
 
 @app.route("/state", methods=["GET"])
 def get_state():
+    # 允許透過 state 註冊玩家，避免雙方都在等待
     player = request.args.get("player")
     if player:
         if player not in state["players"]:
@@ -47,6 +48,7 @@ def move():
     c = action.get("col")
     if state["status"] == "finished":
         return jsonify({"success": False, "message": "遊戲已結束", "data": state})
+    # 註冊玩家與棋子
     if player not in state["players"]:
         if len(state["players"]) >= 2:
             return jsonify({"success": False, "message": "玩家已滿", "data": state})

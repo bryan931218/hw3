@@ -8,7 +8,7 @@ state = {
     "players": [],
     "scores": {},
     "round": 1,
-    "max_rounds": 3,
+    "max_rounds": 5,
     "turn_index": 0,
     "status": "waiting",
     "winner": [],
