@@ -451,7 +451,7 @@ def store_game_menu(player: str, game: Dict):
             print("安裝狀態: 未安裝")
         print()
         print("1) 更新遊戲" if info else "1) 下載遊戲")
-        print("2) 評論遊戲" if plays > 0 else "2) 評論遊戲（需先玩過）")
+        print("2) 評論遊戲" if plays > 0 else "2) 評論遊戲")
         print("3) 返回商城")
         choice = prompt("選擇: ").strip()
         if choice == "1":
