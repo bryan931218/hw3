@@ -424,7 +424,6 @@ def list_rooms(installed_games: Optional[List[str]] = None):
         print("目前沒有房間")
     for r in rooms:
         if installed_games is not None:
-            # 標示玩家是否已安裝，方便決策
             installed_flag = "已安裝" if r["game_id"] in installed_games else "未安裝"
         else:
             installed_flag = ""
@@ -513,6 +512,7 @@ def room_lobby(player: str, room: Dict):
     launched = False
     last_view = None
     last_reason = None
+    last_players: List[str] = list(room.get("players", []) or [])
 
     def render(room_info: Dict, status: str, host: str, force: bool = False) -> bool:
         nonlocal last_view
@@ -568,6 +568,14 @@ def room_lobby(player: str, room: Dict):
                     room["max_players"] = detail.get("max_players")
             status = room.get("status")
             host = room.get("host")
+
+            # Waiting room: notify when someone leaves without closing the room (non-host leave/timeout).
+            if status == "waiting":
+                current_players = list(room.get("players", []) or [])
+                removed = sorted(set(last_players) - set(current_players))
+                if removed:
+                    print(f"\n[房間通知] 玩家 {', '.join(removed)} 已退出房間")
+                last_players = current_players
             rendered = render(room, status, host)
             if status == "in_game" and not launched:
                 launched = True
