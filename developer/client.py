@@ -105,7 +105,7 @@ def choose_game(my_name: str) -> str:
         return ""
     for idx, g in enumerate(games, 1):
         status = "下架" if not g.get("active", True) else f"最新版本 {g['latest_version']}"
-        print(f"{idx}. {g['name']} ({g['id']}) - {status}")
+        print(f"{idx}. {g['name']} - {status}")
     choice = prompt("選擇遊戲編號: ").strip()
     if not choice.isdigit() or int(choice) < 1 or int(choice) > len(games):
         print("選擇無效")

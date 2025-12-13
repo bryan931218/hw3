@@ -331,7 +331,7 @@ def list_store_games(player: Optional[str] = None):
             installed_flag = "未安裝"
         print(
             format_list_line(
-                f"{idx}. {g['name']} ({g['id']})",
+                f"{idx}. {g['name']}",
                 [
                     f"作者 {g.get('developer', '-')}",
                     f"評分 {score_text}",
@@ -1008,7 +1008,7 @@ def view_status(player: str):
             print(f"- {p.get('name')} [{status}]")
     if rooms_resp.ok:
         rooms = rooms_resp.json().get("data", []) or []
-        print("\n房間列表 (所有遊戲):")
+        print("\n房間列表:")
         if not rooms:
             print("- 無房間")
         for r in rooms:
@@ -1016,7 +1016,7 @@ def view_status(player: str):
             game_name = detail.get("name", r.get("game_id"))
             max_p = r.get("max_players") or detail.get("max_players") or "?"
             print(
-                f"- 房號 {r['id']} | 遊戲 {game_name} ({r.get('game_id')}) "
+                f"- 房號 {r['id']} | 遊戲 {game_name} "
                 f"| 狀態 {r['status']} | 玩家 {len(r.get('players', []))}/{max_p} | 房主 {r.get('host','?')}"
             )
     if games_resp.ok:
