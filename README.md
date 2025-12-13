@@ -1,50 +1,13 @@
-# Game Store System (HW3)
-
-Python 3.10+ implementation of the HW3 requirements: developer platform, game store / lobby, versioned downloads, rooms, and ratings with menu-driven clients.
-
-## Repository Layout
-- `server/` – Flask backend (`python -m server.server`)
-- `developer/` – 開發者端 codebase
-  - `client.py` – developer CLI for register/login, upload, update, remove games
-  - `games/` – 開發者本地測試與上架來源（玩家不應直接執行）
-    - `sample_cli/` – ready-to-upload sample CLI dice duel with `manifest.json`
-    - `sample_gui/` – GUI 井字棋雙人對戰 (關卡 B)
-    - `sample_multi_gui/` – GUI 多人骰子賽跑 3–4 人 (關卡 C)
-  - `template/` – starter files for building your own game package
-  - `create_game_template.py` – 從 `template/` 快速複製骨架到 `games/<name>/`
-- `player/` – 玩家端 codebase
-  - `client.py` – lobby/player CLI for browsing, download/update, rooms, launch, rating
-  - `downloads/` – player downloads are stored here under `<player>/<game>/<version>` (inside `player/`)
-- `requirements.txt` – dependencies (`flask`, `requests`)
-- `run_server.py` / `run_developer.py` / `run_player.py` – 一鍵啟動腳本（避免手動輸入指令）
-
-## Setup
-```bash
-pip install -r requirements.txt
-```
-
-## Start the Server
-```bash
-python run_server.py
-```
-- Defaults to `0.0.0.0:5000`. Override with `PORT=8000 python -m server.server`.
-- Data persists in `server/data.json`. Uploaded game bundles are stored under `server/storage/games/`.
-- 若部署在 linux1.cs.nycu.edu.tw，建議設定環境變數：
-  - `PORT=5000`（或自訂）
-  - `GAME_SERVER_HOST=0.0.0.0`（game server 綁定位址）
-  - `GAME_SERVER_PUBLIC_HOST=linux1.cs.nycu.edu.tw`（玩家用來連線的公開位址）
-
 ## Developer Client (上架 / 更新 / 下架)
 ```bash
 python run_developer.py
 ```
-- Follow the menu to **註冊** 或 **登入**。
+- 先註冊 / 登入玩家帳號。
 - 上架新遊戲時，輸入遊戲資料並提供遊戲資料夾路徑（例如 `developer/games/sample_cli`）。程式會自動壓縮並上傳。
 - 更新版本：選擇自己的遊戲，給新版號與資料夾路徑即可。
 - 下架：選擇遊戲，確認後會從商城移除（玩家仍可保留已下載版本）。
 - 若要建立新遊戲骨架：`python developer/create_game_template.py my_game`，會從 `developer/template/` 複製到 `developer/games/my_game/` 供開發與上架。
-- 環境變數 `GAME_SERVER_URL` 可指定後端位址（預設 `http://127.0.0.1:5000`）。
-  - 若連線到 linux1 公網服務，請設 `GAME_SERVER_URL=http://linux1.cs.nycu.edu.tw:5000`。
+- 按照Template中的註解說明完成遊戲後即可上架，當前的games中已有4款遊戲可供測試。
 
 ## Player Client (商城 / 下載 / 房間 / 評分)
 ```bash

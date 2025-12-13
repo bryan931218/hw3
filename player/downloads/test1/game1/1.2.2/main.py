@@ -37,9 +37,45 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 
+def read_any_key_blocking() -> bool:
+    """
+    Block until any key is pressed.
+    Windows: msvcrt.getwch(); POSIX: cbreak mode read(1).
+    Fallback: input() (requires Enter) for IDE consoles.
+    """
+    if os.name == "nt":
+        try:
+            import msvcrt
+
+            msvcrt.getwch()
+            return True
+        except Exception:
+            pass
+    try:
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            sys.stdin.read(1)
+            return True
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    except Exception:
+        try:
+            input()
+            return True
+        except Exception:
+            return False
+
+
 def play_network(server: str, platform_server: str, room: str, player: str):
     last_snapshot = None
     fail_count = 0
+    exit_requested = False
+    exit_requested_at = None
     while True:
         state_resp = get_state(server, room, player)
         if not state_resp.get("success"):
@@ -54,12 +90,17 @@ def play_network(server: str, platform_server: str, room: str, player: str):
         fail_count = 0
         state = state_resp["data"]
         status = state.get("status")
-        safe_to_exit = bool(state.get("safe_to_exit"))
+        safe_to_exit = bool(state.get("safe_to_exit", False))
         scores = state.get("scores", {})
         round_idx = state.get("round")
         players = state.get("players", [])
+        max_rounds = state.get("max_rounds", 3)
+        try:
+            round_shown = min(int(round_idx or 1), int(max_rounds or 3))
+        except Exception:
+            round_shown = round_idx
         turn_player = None
-        if players and status != "finished":
+        if players and status not in ("finished",):
             try:
                 turn_player = players[state.get("turn_index", 0)]
             except Exception:
@@ -69,7 +110,7 @@ def play_network(server: str, platform_server: str, room: str, player: str):
             {
                 "status": status,
                 "scores": scores,
-                "round": round_idx,
+                "round": round_shown,
                 "last_roll": state.get("last_roll"),
                 "turn": turn_player,
                 "players": players,
@@ -82,11 +123,11 @@ def play_network(server: str, platform_server: str, room: str, player: str):
             clear_screen()
             print(
                 "\n============================\n"
-                "   🎲 雙人骰子對戰（線上同步）\n"
+                "   🎲 雙人骰子對戰\n"
                 "============================"
             )
             print("玩法：輪到自己時按 Enter 擲骰，三回合後分數高者獲勝。")
-            banner = f"\n─── 回合 {round_idx}/{state.get('max_rounds', 3)} ───"
+            banner = f"\n─── 回合 {round_shown}/{max_rounds} ───"
             print(banner)
             if state.get("last_roll"):
                 lr = state["last_roll"]
@@ -98,26 +139,35 @@ def play_network(server: str, platform_server: str, room: str, player: str):
             if status == "finished":
                 winners = state.get("winner", [])
                 if winners is not None:
-                    if not winners:
+                    if not winners or (isinstance(winners, list) and len(winners) > 1):
                         print("平手！")
                     else:
-                        print(f"勝者: {', '.join(winners)}")
+                        if isinstance(winners, list):
+                            print(f"勝者: {winners[0]}")
+                        else:
+                            print(f"勝者: {winners}")
                 else:
                     print("有玩家離開，遊戲中止。")
-                if not safe_to_exit:
-                    print("\n等待另一位玩家確認結果...")
-            if status == "waiting":
+                print("\n按任意鍵結束遊戲")
+            elif status == "waiting":
                 print("等待另一位玩家加入中...")
             elif player != turn_player:
                 print(f"輪到 {turn_player}，等待中...")
             else:
                 print("輪到你擲骰，按 Enter ⏎ ")
         if status == "finished":
-            if safe_to_exit:
+            if not exit_requested:
+                read_any_key_blocking()
+                exit_requested = True
+                exit_requested_at = time.time()
+            safe_to_exit_effective = safe_to_exit or ("safe_to_exit" not in state)
+            if exit_requested and not safe_to_exit_effective and exit_requested_at:
+                if time.time() - float(exit_requested_at) >= 2.0:
+                    safe_to_exit_effective = True
+            if exit_requested and safe_to_exit_effective:
                 leave_room_platform(platform_server, room, player)
-                input("遊戲結束，按 Enter 返回大廳")
                 return
-            time.sleep(1)
+            time.sleep(0.2)
             continue
         if status == "waiting":
             time.sleep(1)

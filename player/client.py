@@ -58,10 +58,12 @@ def menu_title(title: str, username: Optional[str]) -> str:
     return f"{title} ({username})" if username else title
 
 
+def format_list_line(prefix: str, segments: List[str]) -> str:
+    seg = " | ".join(s for s in segments if s)
+    return f"{prefix} | {seg}" if seg else prefix
+
+
 def get_input_timeout(prompt_text: str, timeout: float, newline_on_timeout: bool = True) -> Optional[str]:
-    """
-    在 timeout 秒內等待輸入，逾時回傳 None。Windows 使用 msvcrt，其他平台用 select。
-    """
     if prompt_text:
         print(prompt_text, end="", flush=True)
     if os.name == "nt":
@@ -116,7 +118,6 @@ def save_installed(player: str, data: Dict) -> None:
 
 def decode_and_extract(player: str, game_id: str, version: str, file_data: str) -> str:
     target_dir = os.path.join(ensure_player_dir(player), game_id, version)
-    # Ensure a clean directory to prevent tampered/extra files from surviving a re-download.
     if os.path.exists(target_dir):
         shutil.rmtree(target_dir, ignore_errors=True)
     os.makedirs(target_dir, exist_ok=True)
@@ -129,7 +130,6 @@ def decode_and_extract(player: str, game_id: str, version: str, file_data: str) 
 def _iter_local_game_files(root_dir: str) -> List[str]:
     paths: List[str] = []
     for base, dirs, files in os.walk(root_dir):
-        # Skip typical generated dirs
         dirs[:] = [d for d in dirs if d not in {"__pycache__", "__MACOSX", ".git", ".idea", ".vscode"}]
         for name in files:
             if name.endswith((".pyc", ".pyo")):
@@ -224,9 +224,12 @@ def verify_local_game_integrity(game_id: str, version: str, path: str) -> bool:
     return True
 
 
-def fetch_game_detail(game_id: str) -> Optional[Dict]:
+def fetch_game_detail(game_id: str, *, player: Optional[str] = None) -> Optional[Dict]:
     try:
-        resp = requests.get(f"{SERVER_URL}/games/{game_id}", timeout=REQUEST_TIMEOUT)
+        params = {}
+        if player:
+            params["player"] = player
+        resp = requests.get(f"{SERVER_URL}/games/{game_id}", params=params, timeout=REQUEST_TIMEOUT)
         if resp.ok:
             return resp.json().get("data")
     except Exception:
@@ -257,28 +260,30 @@ def download_game_version(player: str, game_id: str, version: Optional[str] = No
 
 
 def ensure_latest_version(player: str, game_id: str, target_version: Optional[str] = None) -> bool:
-    """
-    確保玩家已安裝目標版本（若未指定則為最新版本）。必要時提示並自動下載。
-    回傳 True 代表已符合條件；False 代表使用者拒絕或失敗。
-    """
     installed = load_installed(player)
     detail = fetch_game_detail(game_id)
-    if not detail:
+
+    if not detail and not target_version:
         print("無法取得遊戲資訊，請稍後重試")
         return False
-    latest_version = detail.get("latest_version")
-    desired = target_version or latest_version
-    name = detail.get("name", game_id)
+
+    name = detail.get("name", game_id) if detail else game_id
+    desired = target_version or (detail.get("latest_version") if detail else None)
+    if not desired:
+        print("無法取得目標版本資訊，請稍後重試")
+        return False
+
     local_ver = installed.get(game_id, {}).get("version")
     if local_ver == desired:
         return True
-    if not installed.get(game_id):
+
+    if game_id not in installed:
         ans = prompt(f"尚未安裝 {name}（將安裝版本 {desired}），是否立即下載？(y/N): ").strip().lower()
         if ans != "y":
             print("未安裝，無法進入房間/建立房間")
             return False
         return download_game_version(player, game_id, desired)
-    # 已安裝但版本不同
+
     ans = prompt(f"{name} 已有版本 {local_ver}，需要更新為 {desired} 才能進入，是否更新？(y/N): ").strip().lower()
     if ans != "y":
         print("已取消，請更新後再試")
@@ -306,25 +311,41 @@ def login() -> str:
     return username if data.get("success") else ""
 
 
-def list_store_games():
+def list_store_games(player: Optional[str] = None):
     resp = requests.get(f"{SERVER_URL}/games", timeout=REQUEST_TIMEOUT)
     if resp.status_code != 200:
         print("無法取得列表")
         return []
     games = resp.json().get("data", [])
-    print(f"\n=== {menu_title('商城遊戲列表', None)} ===")
+    installed = load_installed(player) if player else {}
+    print(f"\n=== {menu_title('商城遊戲列表', player)} ===")
     if not games:
         print("目前沒有可遊玩的遊戲")
         return games
     for idx, g in enumerate(games, 1):
         score = g.get("average_score")
         score_text = f"{score}/5" if score else "尚無評分"
-        print(f"{idx}. {g['name']} by {g['developer']} - {score_text} 最新 {g['latest_version']}")
+        if g.get("id") in installed:
+            installed_flag = f"已安裝 {installed[g['id']].get('version', '')}".strip()
+        else:
+            installed_flag = "未安裝"
+        print(
+            format_list_line(
+                f"{idx}. {g['name']} ({g['id']})",
+                [
+                    f"作者 {g.get('developer', '-')}",
+                    f"評分 {score_text}",
+                    f"版本 {g.get('latest_version', '-')}",
+                    f"人數 {g.get('min_players', '?')}-{g.get('max_players', '?')}",
+                    installed_flag,
+                ],
+            )
+        )
     return games
 
 
-def view_game_detail():
-    games = list_store_games()
+def view_game_detail(player: str):
+    games = list_store_games(player)
     if not games:
         return
     choice = prompt("輸入要查看的遊戲編號: ").strip()
@@ -340,7 +361,7 @@ def view_game_detail():
     print(f"\n名稱: {detail['name']}")
     print(f"作者: {detail['developer']}")
     print(f"簡介: {detail['description']}")
-    print(f"類型: {detail['game_type']} 人數 {detail['min_players']}-{detail['max_players']}")
+    print(f"人數: {detail['min_players']}-{detail['max_players']}")
     print(f"最新版本: {detail['latest_version']}")
     if detail.get("average_score"):
         print(f"平均評分: {detail['average_score']}")
@@ -351,7 +372,7 @@ def view_game_detail():
 
 
 def download_or_update(player: str):
-    games = list_store_games()
+    games = list_store_games(player)
     if not games:
         return
     choice = prompt("選擇要下載/更新的遊戲編號: ").strip()
@@ -386,8 +407,109 @@ def list_installed_games(player: str):
         print(f"- {info.get('name', gid)} ({gid}) 版本 {info.get('version')}")
 
 
+def rate_game_by_id(player: str, game_id: str, game_name: str):
+    try:
+        score = int(prompt("評分 1-5: ").strip() or "0")
+    except ValueError:
+        print("請輸入數字 1-5")
+        return
+    if score < 1 or score > 5:
+        print("評分需介於 1-5")
+        return
+    comment = prompt("評論: ").strip()
+    resp = requests.post(
+        f"{SERVER_URL}/ratings",
+        json={"player": player, "game_id": game_id, "score": score, "comment": comment},
+        timeout=REQUEST_TIMEOUT,
+    )
+    print(resp.json().get("message"))
+
+
+def store_game_menu(player: str, game: Dict):
+    gid = game.get("id")
+    if not gid:
+        print("遊戲資訊錯誤")
+        return
+    detail = fetch_game_detail(gid, player=player) or game
+    while True:
+        installed = load_installed(player)
+        info = installed.get(gid)
+        stats = (detail or {}).get("player_stats") or {}
+        plays = int(stats.get("plays", 0) or 0)
+        wins = int(stats.get("wins", 0) or 0)
+        losses = int(stats.get("losses", 0) or 0)
+        draws = int(stats.get("draws", 0) or 0)
+        win_rate = stats.get("win_rate")
+        clear_screen()
+        print(f"=== {detail.get('name', gid)} ({gid}) ===")
+        print(f"作者: {detail.get('developer', '-')}")
+        print(f"簡介: {detail.get('description', '-')}")
+        print(f"最新版本: {detail.get('latest_version', '-')}")
+        print(f"人數: {detail.get('min_players', '?')}-{detail.get('max_players', '?')}")
+        print(f"遊玩次數: {plays}")
+        if win_rate is None:
+            print(f"勝率: -  (勝 {wins} / 敗 {losses} / 和 {draws})")
+        else:
+            print(f"勝率: {round(float(win_rate) * 100, 2)}%  (勝 {wins} / 敗 {losses} / 和 {draws})")
+        if info:
+            print(f"安裝狀態: 已安裝（{info.get('version', '-') }）")
+        else:
+            print("安裝狀態: 未安裝")
+        print()
+        print("1) 更新遊戲" if info else "1) 下載遊戲")
+        print("2) 評論遊戲" if plays > 0 else "2) 評論遊戲（需先玩過）")
+        print("3) 返回商城")
+        choice = prompt("選擇: ").strip()
+        if choice == "1":
+            # Refresh detail to ensure latest version/stats
+            detail = fetch_game_detail(gid, player=player) or detail
+            latest = (detail or {}).get("latest_version")
+            if info and latest and info.get("version") == latest:
+                print("已是最新版本")
+                prompt("按 Enter 繼續: ")
+                continue
+            ok = ensure_latest_version(player, gid)
+            if ok:
+                detail = fetch_game_detail(gid, player=player) or detail
+                prompt("完成，按 Enter 繼續: ")
+            continue
+        if choice == "2":
+            if plays <= 0:
+                print("必須玩過遊戲才能評論")
+                prompt("按 Enter 繼續: ")
+                continue
+            rate_game_by_id(player, gid, detail.get("name", gid))
+            prompt("按 Enter 繼續: ")
+            continue
+        if choice == "3":
+            return
+        print("請輸入 1-3")
+        prompt("按 Enter 繼續: ")
+
+
+def browse_store(player: str):
+    while True:
+        games = list_store_games(player)
+        if not games:
+            return
+        choice = prompt("選擇要查看的遊戲編號（或輸入 0 返回）: ").strip()
+        if choice == "0":
+            return
+        idx = parse_index(choice, len(games))
+        if idx is None:
+            print("選擇無效")
+            continue
+        store_game_menu(player, games[idx - 1])
+
+
+def my_games_menu(player: str):
+    clear_screen()
+    list_installed_games(player)
+    prompt("\n按 Enter 返回: ")
+
+
 def create_room(player: str):
-    games = list_store_games()
+    games = list_store_games(player)
     if not games:
         return None
     choice = prompt("選擇要建立房間的遊戲編號: ").strip()
@@ -395,7 +517,6 @@ def create_room(player: str):
         print("選擇無效")
         return None
     game = games[int(choice) - 1]
-    # 確保已安裝最新版本
     if not ensure_latest_version(player, game["id"], game.get("latest_version")):
         return None
     resp = requests.post(f"{SERVER_URL}/rooms", json={"player": player, "game_id": game["id"]}, timeout=REQUEST_TIMEOUT)
@@ -405,7 +526,6 @@ def create_room(player: str):
         room = data["data"]
         print(f"房號 {room['id']} 遊戲 {room['game_id']} 版本 {room['version']}")
         return room
-    # 若房間數量已滿，建議直接查看現有房間
     if "上限" in data.get("message", ""):
         list_rooms()
     return None
@@ -417,7 +537,6 @@ def list_rooms(installed_games: Optional[List[str]] = None):
         print("無法取得房間列表")
         return []
     rooms = resp.json().get("data", [])
-    # 若缺少 max_players，嘗試從遊戲詳細補齊，避免顯示 ?.
     for r in rooms:
         detail = fetch_game_detail(r.get("game_id"))
         r["game_name"] = detail.get("name") if detail else r.get("game_id")
@@ -426,29 +545,32 @@ def list_rooms(installed_games: Optional[List[str]] = None):
     print(f"\n=== {menu_title('房間列表', None)} ===")
     if not rooms:
         print("目前沒有房間")
-    for r in rooms:
+    for idx, r in enumerate(rooms, 1):
         if installed_games is not None:
             installed_flag = "已安裝" if r["game_id"] in installed_games else "未安裝"
         else:
             installed_flag = ""
         max_p = r.get("max_players") or "?"
         name = r.get("game_name", r.get("game_id"))
-        suffix = f" | {installed_flag}" if installed_flag else ""
         print(
-            f"- 房號 {r['id']} | 遊戲 {name} ({r['game_id']}) | 狀態 {r['status']} "
-            f"| 玩家 {len(r['players'])}/{max_p}{suffix}"
+            format_list_line(
+                f"{idx}. 房號 {r['id']}",
+                [
+                    f"遊戲 {name} ({r.get('game_id')})",
+                    f"狀態 {r.get('status', '-') }",
+                    f"玩家 {len(r.get('players') or [])}/{max_p}",
+                    f"版本 {r.get('version', '-') }",
+                    installed_flag,
+                ],
+            )
         )
     return rooms
 
 
 def join_room(player: str) -> Optional[Dict]:
     installed = load_installed(player)
-    rooms = list_rooms(installed_games=list(installed.keys()))  # 顯示所有房間，並提示是否已安裝
-    if not rooms:
-        print("目前沒有房間")
-        return None
+    list_rooms(installed_games=list(installed.keys()))
     rid = prompt("輸入要加入的房號: ").strip()
-    # 先取得房間資訊以核對版本，避免未更新就加入
     detail = fetch_room(rid)
     if not detail:
         print("房間不存在或已關閉")
@@ -914,8 +1036,7 @@ def run_flow():
             "1) 瀏覽遊戲\n"
             "2) 開始遊戲\n"
             "3) 狀態看板\n"
-            "4) 評分與評論\n"
-            "5) 離開\n"
+            "4) 離開\n"
         )
         choice = prompt("選擇: ").strip()
         if choice == "1":
@@ -923,24 +1044,18 @@ def run_flow():
                 print(
                     f"\n--- 商城 / 下載 ({player}) ---\n"
                     "1) 瀏覽商城\n"
-                    "2) 查看遊戲詳細\n"
-                    "3) 下載/更新遊戲\n"
-                    "4) 查看已安裝遊戲\n"
-                    "5) 返回主選單\n"
+                    "2) 我的遊戲\n"
+                    "3) 返回主選單\n"
                 )
                 sub = prompt("選擇: ").strip()
                 if sub == "1":
-                    list_store_games()
+                    browse_store(player)
                 elif sub == "2":
-                    view_game_detail()
+                    my_games_menu(player)
                 elif sub == "3":
-                    download_or_update(player)
-                elif sub == "4":
-                    list_installed_games(player)
-                elif sub == "5":
                     break
                 else:
-                    print("請輸入 1-5")
+                    print("請輸入 1-3")
         elif choice == "2":
             while True:
                 print(
@@ -970,13 +1085,11 @@ def run_flow():
         elif choice == "3":
             view_status(player)
         elif choice == "4":
-            rate_game(player)
-        elif choice == "5":
             logout(player)
             hb_stop.set()
             break
         else:
-            print("請輸入 1-5")
+            print("請輸入 1-4")
     return player, hb_stop
 
 

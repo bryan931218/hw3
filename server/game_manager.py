@@ -30,13 +30,8 @@ def _cleanup_rooms(data: Dict) -> None:
     Auto-close rooms whose members stopped heartbeating and clear finished rooms after a grace period.
     """
     now = time.time()
-    inactive_games = {gid for gid, g in data["games"].items() if not g.get("active", True)}
     to_delete = []
     for rid, room in list(data.get("rooms", {}).items()):
-        # Remove rooms tied to inactive games immediately
-        if room.get("game_id") in inactive_games:
-            to_delete.append(rid)
-            continue
         # Skip already finished rooms; delete later if grace expired
         if room.get("status") == "finished":
             ended_at = room.get("ended_at", now)
@@ -86,11 +81,13 @@ def _save_game_blob(game_id: str, version: str, file_data_b64: str) -> str:
 
 
 def _validate_upload(file_data_b64: str) -> Tuple[bool, str, Optional[Dict]]:
-    """
-    Basic validation for uploaded game bundle:
-    - manifest.json must exist with required keys
-    - entry and server_entry (if provided) must exist in zip
-    """
+    def _norm_path(p: str) -> str:
+        p = (p or "").strip().replace("\\", "/")
+        while p.startswith("./"):
+            p = p[2:]
+        p = p.lstrip("/")
+        return p
+
     try:
         raw = base64.b64decode(file_data_b64)
     except Exception:
@@ -101,24 +98,38 @@ def _validate_upload(file_data_b64: str) -> Tuple[bool, str, Optional[Dict]]:
             if "manifest.json" not in zf.namelist():
                 return False, "缺少 manifest.json", None
             manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+            if not isinstance(manifest, dict):
+                return False, "manifest.json 格式錯誤（需為 JSON 物件）", None
             missing = [k for k in REQUIRED_MANIFEST_KEYS if k not in manifest]
             if missing:
                 return False, f"manifest 缺少欄位: {', '.join(missing)}", None
+            extra_keys = sorted([k for k in manifest.keys() if k not in REQUIRED_MANIFEST_KEYS])
+            if extra_keys:
+                return False, f"manifest 不允許欄位: {', '.join(extra_keys)}", None
+
+            zip_files = {_norm_path(n) for n in zf.namelist() if not n.endswith("/")}
+
             entry = manifest.get("entry")
             if not isinstance(entry, str) or not entry.strip():
                 return False, "entry 必須為字串", None
-            entry = entry.strip().replace("\\", "/")
+            entry = _norm_path(entry)
+            if not entry:
+                return False, "entry 必須為字串", None
+            if ".." in entry.split("/"):
+                return False, "entry 不可包含 ..", None
             manifest["entry"] = entry
-            if entry not in zf.namelist():
+            if entry not in zip_files:
                 return False, f"找不到入口檔 {entry}", None
-            server_entry = manifest.get("server_entry", "")
-            if server_entry is None:
-                server_entry = ""
-            if not isinstance(server_entry, str):
+            server_entry = manifest.get("server_entry")
+            if not isinstance(server_entry, str) or not server_entry.strip():
                 return False, "server_entry 必須為字串", None
-            server_entry = server_entry.strip().replace("\\", "/")
+            server_entry = _norm_path(server_entry)
+            if not server_entry:
+                return False, "server_entry 必須為字串", None
+            if ".." in server_entry.split("/"):
+                return False, "server_entry 不可包含 ..", None
             manifest["server_entry"] = server_entry
-            if server_entry and server_entry not in zf.namelist():
+            if server_entry not in zip_files:
                 return False, f"找不到 server_entry: {server_entry}", None
             try:
                 manifest["min_players"] = int(manifest.get("min_players", 0))
@@ -249,25 +260,18 @@ def remove_game(db: Database, developer: str, game_id: str) -> Tuple[bool, str]:
             return False, "遊戲不存在"
         if game["developer"] != developer:
             return False, "無權限下架此遊戲"
-        # 關閉並清除所有與此遊戲相關的房間
-        room_ids = [rid for rid, r in data.get("rooms", {}).items() if r.get("game_id") == game_id]
-        for rid in room_ids:
-            game_runtime.stop_game_server(rid)
-            data["rooms"].pop(rid, None)
-        # 移除所有相關評分
-        rating_ids = [rid for rid, r in data.get("ratings", {}).items() if r.get("game_id") == game_id]
-        for rid in rating_ids:
-            data["ratings"].pop(rid, None)
-        # 從開發者列表中移除
-        dev_games = data["developers"].get(developer, {}).get("games", [])
-        data["developers"][developer]["games"] = [g for g in dev_games if g != game_id]
-        # 刪除檔案
-        storage_dir = os.path.join(STORAGE_ROOT, game_id)
-        if os.path.isdir(storage_dir):
-            shutil.rmtree(storage_dir, ignore_errors=True)
-        # 最後移除遊戲
-        data["games"].pop(game_id, None)
-        return True, "已刪除遊戲"
+        active_room_count = sum(
+            1
+            for r in (data.get("rooms") or {}).values()
+            if r.get("game_id") == game_id and r.get("status") != "finished"
+        )
+        # Soft disable (downlist) immediately; keep any existing rooms running.
+        game["active"] = False
+        game["accept_new_rooms"] = False
+        game["deactivated_at"] = int(time.time())
+        if active_room_count:
+            return True, f"已下架（不再接受新房間），現有房間保留: {active_room_count}"
+        return True, "已下架（不再接受新房間）"
 
     return db.update(_remove)
 
@@ -284,7 +288,25 @@ def list_games(db: Database, include_inactive: bool = False) -> List[Dict]:
     return games
 
 
-def game_detail(db: Database, game_id: str) -> Optional[Dict]:
+def _player_game_stats(data: Dict, player: str, game_id: str) -> Dict:
+    played_count = data.get("players", {}).get(player, {}).get("played_games", {}).get(game_id, 0) or 0
+    results = data.get("players", {}).get(player, {}).get("game_results", {}).get(game_id, {}) or {}
+    wins = int(results.get("wins", 0) or 0)
+    losses = int(results.get("losses", 0) or 0)
+    draws = int(results.get("draws", 0) or 0)
+    win_rate = None
+    if played_count > 0:
+        win_rate = round(wins / float(played_count), 4)
+    return {
+        "plays": int(played_count),
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "win_rate": win_rate,
+    }
+
+
+def game_detail(db: Database, game_id: str, player: Optional[str] = None) -> Optional[Dict]:
     data = db.snapshot()
     game = data["games"].get(game_id)
     if not game or not game.get("active", True):
@@ -295,7 +317,61 @@ def game_detail(db: Database, game_id: str) -> Optional[Dict]:
         game["average_score"] = round(sum(r["score"] for r in ratings) / len(ratings), 2)
     else:
         game["average_score"] = None
+    if player and player in data.get("players", {}):
+        game["player_stats"] = _player_game_stats(data, player, game_id)
     return game
+
+
+def report_room_result(db: Database, room_id: str, reporter: str, winners: List[str]) -> Tuple[bool, str, Optional[Dict]]:
+    def _report(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
+        _cleanup_rooms(data)
+        room = data.get("rooms", {}).get(room_id)
+        if not room:
+            return False, "房間不存在或已關閉", None
+        players = list(room.get("players") or [])
+        if reporter not in players:
+            return False, "你不在此房間", None
+        if not isinstance(winners, list):
+            return False, "winners 格式錯誤", None
+        normalized = []
+        for w in winners:
+            if not isinstance(w, str):
+                continue
+            w = w.strip()
+            if not w or w not in players:
+                continue
+            if w not in normalized:
+                normalized.append(w)
+        normalized.sort()
+
+        reports = room.setdefault("result_reports", {})
+        reports[reporter] = normalized
+
+        if not room.get("result_finalized"):
+            room["winners"] = normalized
+            room["result_finalized"] = True
+            game_id = room.get("game_id")
+            if game_id:
+                for p in players:
+                    info = data["players"].setdefault(p, {})
+                    res = info.setdefault("game_results", {}).setdefault(game_id, {"wins": 0, "losses": 0, "draws": 0})
+                    if not normalized or set(normalized) == set(players):
+                        res["draws"] = int(res.get("draws", 0) or 0) + 1
+                    elif p in normalized:
+                        res["wins"] = int(res.get("wins", 0) or 0) + 1
+                    else:
+                        res["losses"] = int(res.get("losses", 0) or 0) + 1
+
+        payload = {
+            "room_id": room_id,
+            "game_id": room.get("game_id"),
+            "winners": room.get("winners") or [],
+            "finalized": bool(room.get("result_finalized")),
+            "reports": len(room.get("result_reports") or {}),
+        }
+        return True, "已記錄結果", payload
+
+    return db.update(_report)
 
 
 def download_game(db: Database, game_id: str, version: Optional[str] = None) -> Tuple[bool, str, Optional[Dict]]:
@@ -304,7 +380,11 @@ def download_game(db: Database, game_id: str, version: Optional[str] = None) -> 
     if not game:
         return False, "遊戲不存在", None
     if not game.get("active", True):
-        return False, "遊戲已下架", None
+        has_active_room = any(
+            r.get("game_id") == game_id and r.get("status") != "finished" for r in (data.get("rooms") or {}).values()
+        )
+        if not has_active_room:
+            return False, "遊戲已下架", None
     target_version = version or game["latest_version"]
     match = next((v for v in game["versions"] if v["version"] == target_version), None)
     if not match:
@@ -323,8 +403,14 @@ def game_integrity(db: Database, game_id: str, version: Optional[str] = None) ->
     """
     data = db.snapshot()
     game = data["games"].get(game_id)
-    if not game or not game.get("active", True):
+    if not game:
         return False, "遊戲不存在或已下架", None
+    if not game.get("active", True):
+        has_active_room = any(
+            r.get("game_id") == game_id and r.get("status") != "finished" for r in (data.get("rooms") or {}).values()
+        )
+        if not has_active_room:
+            return False, "遊戲不存在或已下架", None
     target_version = version or game["latest_version"]
     version_rec = next((v for v in game["versions"] if v["version"] == target_version), None)
     if not version_rec:
@@ -423,8 +509,9 @@ def join_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optio
                 return False, room.get("ended_reason", "房間已結束"), None
             return False, "遊戲已開始", None
         game = data["games"].get(room["game_id"])
-        if not game or not game.get("active", True):
-            return False, "遊戲不可用", None
+        # Even if the game is inactive (downlisted), existing rooms remain joinable.
+        if not game:
+            return False, "遊戲不存在", None
         room.setdefault("max_players", game.get("max_players"))
         room.setdefault("min_players", game.get("min_players"))
         if player not in data["players"]:

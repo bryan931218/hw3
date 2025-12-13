@@ -6,6 +6,12 @@
         "test",
         "gui-game"
       ]
+    },
+    "dev": {
+      "password": "x",
+      "games": [
+        "g"
+      ]
     }
   },
   "players": {
@@ -24,6 +30,38 @@
         "gui-game": 1
       },
       "online": true
+    },
+    "p1": {
+      "password": "x"
+    },
+    "p2": {
+      "password": "x"
+    },
+    "p": {
+      "password": "x",
+      "played_games": {
+        "g": 1
+      },
+      "game_results": {
+        "g": {
+          "wins": 1,
+          "losses": 0,
+          "draws": 0
+        }
+      }
+    },
+    "q": {
+      "password": "x",
+      "played_games": {
+        "g": 1
+      },
+      "game_results": {
+        "g": {
+          "wins": 0,
+          "losses": 1,
+          "draws": 0
+        }
+      }
     }
   },
   "games": {
@@ -74,55 +112,50 @@
       "ratings": [
         "1"
       ]
+    },
+    "g": {
+      "id": "g",
+      "name": "G",
+      "developer": "d",
+      "description": "",
+      "game_type": "custom",
+      "min_players": 2,
+      "max_players": 2,
+      "active": true,
+      "versions": [],
+      "latest_version": "1.0",
+      "ratings": [
+        "2"
+      ]
     }
   },
   "rooms": {
     "1": {
       "id": "1",
-      "game_id": "test",
-      "version": "1.0.0",
-      "host": "test",
+      "game_id": "g",
+      "version": "1.0",
+      "host": "p",
       "players": [
-        "test",
-        "test2"
+        "p",
+        "q"
       ],
+      "max_players": 2,
+      "min_players": 2,
       "status": "in_game",
-      "created_at": 1765263890
-    },
-    "2": {
-      "id": "2",
-      "game_id": "test",
-      "version": "1.0.0",
-      "host": "test",
-      "players": [
-        "test",
-        "test2"
+      "created_at": 0,
+      "heartbeats": {
+        "p": 9999999999,
+        "q": 9999999999
+      },
+      "result_reports": {
+        "p": [
+          "p"
+        ]
+      },
+      "winners": [
+        "p"
       ],
-      "status": "in_game",
-      "created_at": 1765265239
-    },
-    "3": {
-      "id": "3",
-      "game_id": "test",
-      "version": "1.0.1",
-      "host": "test2",
-      "players": [
-        "test2"
-      ],
-      "status": "waiting",
-      "created_at": 1765266137
-    },
-    "4": {
-      "id": "4",
-      "game_id": "gui-game",
-      "version": "1.0.0",
-      "host": "test",
-      "players": [
-        "test",
-        "test2"
-      ],
-      "status": "in_game",
-      "created_at": 1765268060
+      "result_finalized": true
     }
   },
   "ratings": {
@@ -133,10 +166,18 @@
       "score": 4,
       "comment": "\u8d85\u8b9a",
       "created_at": 1765269355
+    },
+    "2": {
+      "id": "2",
+      "player": "p",
+      "game_id": "g",
+      "score": 5,
+      "comment": "hi",
+      "created_at": 1765650350
     }
   },
   "next_ids": {
     "room": 5,
-    "rating": 2
+    "rating": 3
   }
 }

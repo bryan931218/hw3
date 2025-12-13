@@ -87,7 +87,6 @@ def choose_local_folder() -> str:
             return candidates[idx - 1]
         print("編號不存在")
         return ""
-    # 若輸入自訂路徑
     return choice
 
 
@@ -231,7 +230,6 @@ def view_games(dev_name: str):
     if not games:
         print("沒有上架的遊戲")
         return
-    print("\n=== 我的遊戲 ===")
     for g in games:
         status = "下架" if not g.get("active", True) else f"最新版本 {g['latest_version']}"
         print(f"- {g['name']} ({g['id']}): {status}，人數 {g['min_players']}-{g['max_players']}")

@@ -133,6 +133,8 @@ class TetrisClient(tk.Tk):
         self.result_window: Optional[tk.Toplevel] = None
         self.ready_sent = False
         self.started = False
+        self.platform_server: str = ""
+        self.result_reported = False
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.resizable(True, True)
         self._build_ui()
@@ -247,6 +249,7 @@ class TetrisClient(tk.Tk):
                     self.info_var.set("Match finished: Draw")
                 else:
                     self.info_var.set("Match finished: Defeat")
+                self._report_result(result)
                 self._show_results(result)
             elif kind == "READY_STATE":
                 players = msg.get("players", [])
@@ -261,6 +264,33 @@ class TetrisClient(tk.Tk):
                 self.info_var.set(f"Error: {msg.get('message')}")
         self._apply_due_snapshots()
         self.after(50, self._process_queue)
+
+    def _report_result(self, result: Dict) -> None:
+        if self.result_reported or self.mode == "WATCH":
+            return
+        if not self.platform_server or not self.room_id or not self.player_name:
+            return
+        winner_id = result.get("winner")
+        if winner_id is None:
+            winners: List[str] = []
+        else:
+            players = result.get("players", {}) or {}
+            winner_name = None
+            if isinstance(players, dict):
+                winner_name = (players.get(winner_id) or {}).get("username")
+            winner_name = winner_name or result.get("winner_name") or self.player_names.get(winner_id)
+            winners = [winner_name] if winner_name else []
+        try:
+            import requests
+
+            requests.post(
+                f"{self.platform_server}/rooms/{self.room_id}/result",
+                json={"player": self.player_name, "winners": winners},
+                timeout=2,
+            )
+        except Exception:
+            pass
+        self.result_reported = True
 
     def _apply_due_snapshots(self, *, force: bool = False) -> None:
         now = time.time()
@@ -454,6 +484,7 @@ def main() -> None:
     mode = "WATCH" if args.watch else "PLAY"
     try:
         app = TetrisClient(host, port, args.player, args.room, mode=mode)
+        app.platform_server = (args.server or "").rstrip("/")
         app.mainloop()
     except Exception as exc:
         messagebox.showerror("Error", f"Cannot start Tetris client: {exc}")
