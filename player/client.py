@@ -594,12 +594,6 @@ def room_lobby(player: str, room: Dict):
             if choice is None:
                 continue
             choice = (choice or "").strip()
-            if not choice:
-                print("請輸入 1-2")
-                rendered = render(room, status, host, force=True)
-                if rendered:
-                    print("選擇: ", end="", flush=True)
-                continue
             if player == host:
                 if choice == "1":
                     started = start_room(player, room["id"])

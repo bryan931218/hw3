@@ -14,8 +14,8 @@ from .database import Database
 from . import game_runtime
 
 STORAGE_ROOT = os.path.join(os.path.dirname(__file__), "storage", "games")
-ROOM_HEARTBEAT_TIMEOUT = 15  # seconds
-FINISHED_ROOM_GRACE_SECONDS = 30  # keep ended rooms shortly for users to see the reason
+ROOM_HEARTBEAT_TIMEOUT = 15
+FINISHED_ROOM_GRACE_SECONDS = 30 
 REQUIRED_MANIFEST_KEYS = ["entry", "min_players", "max_players", "server_entry"]
 
 

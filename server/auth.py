@@ -4,7 +4,7 @@ from typing import Dict, Optional, Tuple
 
 from .database import Database
 
-SESSION_LOGIN_LOCK = int(os.environ.get("SESSION_LOGIN_LOCK", "30")) 
+SESSION_LOGIN_LOCK = int(os.environ.get("SESSION_LOGIN_LOCK", "15")) 
 
 def _get_table(user_type: str) -> str:
     if user_type not in ("developer", "player"):
@@ -86,7 +86,7 @@ def is_logged_in(db: Database, user_type: str, username: str) -> bool:
             if username in data.get(table, {}):
                 data[table][username]["online"] = False
             return False
-        sessions[username] = now  # touch
+        sessions[username] = now 
         return True
 
     try:
