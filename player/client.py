@@ -432,6 +432,8 @@ def store_game_menu(player: str, game: Dict):
         return
     detail = fetch_game_detail(gid, player=player) or game
     while True:
+        # Always refresh detail/stats on page entry and after returning from other actions.
+        detail = fetch_game_detail(gid, player=player) or detail or game
         installed = load_installed(player)
         info = installed.get(gid)
         stats = (detail or {}).get("player_stats") or {}
