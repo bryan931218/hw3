@@ -2,6 +2,7 @@ import base64
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -16,6 +17,7 @@ import requests
 
 DOWNLOAD_ROOT = os.path.join(os.path.dirname(__file__), "downloads")
 SERVER_URL = os.environ.get("GAME_SERVER_URL", "http://linux1.cs.nycu.edu.tw:5000")
+REQUEST_TIMEOUT = 3
 
 
 def ensure_server_available(url: str) -> bool:
@@ -110,6 +112,9 @@ def save_installed(player: str, data: Dict) -> None:
 
 def decode_and_extract(player: str, game_id: str, version: str, file_data: str) -> str:
     target_dir = os.path.join(ensure_player_dir(player), game_id, version)
+    # Ensure a clean directory to prevent tampered/extra files from surviving a re-download.
+    if os.path.exists(target_dir):
+        shutil.rmtree(target_dir, ignore_errors=True)
     os.makedirs(target_dir, exist_ok=True)
     buffer = io.BytesIO(base64.b64decode(file_data))
     with zipfile.ZipFile(buffer, "r") as zf:
@@ -117,9 +122,82 @@ def decode_and_extract(player: str, game_id: str, version: str, file_data: str) 
     return target_dir
 
 
+def _iter_local_game_files(root_dir: str) -> List[str]:
+    paths: List[str] = []
+    for base, dirs, files in os.walk(root_dir):
+        # Skip typical generated dirs
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for name in files:
+            if name.endswith((".pyc", ".pyo")):
+                continue
+            if name in {".DS_Store"}:
+                continue
+            abs_path = os.path.join(base, name)
+            rel = os.path.relpath(abs_path, root_dir).replace("\\", "/")
+            paths.append(rel)
+    return sorted(paths)
+
+
+def _sha256_file(path: str) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 256), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def fetch_game_integrity(game_id: str, version: Optional[str]) -> Optional[Dict]:
+    try:
+        params = {}
+        if version:
+            params["version"] = version
+        resp = requests.get(f"{SERVER_URL}/games/{game_id}/integrity", params=params, timeout=REQUEST_TIMEOUT)
+        if resp.ok:
+            return resp.json().get("data")
+    except Exception:
+        return None
+    return None
+
+
+def verify_local_game_integrity(game_id: str, version: str, path: str) -> bool:
+    """
+    Compare local extracted files with server-provided SHA256 list.
+    If mismatch, caller should re-download the exact version.
+    """
+    expected = fetch_game_integrity(game_id, version)
+    if not expected or expected.get("version") != version:
+        print("無法驗證遊戲完整性（取不到伺服器端完整性資訊），請稍後再試")
+        return False
+    expected_files_raw: Dict[str, str] = expected.get("files") or {}
+    expected_files = {str(k).replace("\\", "/"): str(v) for k, v in expected_files_raw.items() if k}
+    if not isinstance(expected_files, dict) or not expected_files:
+        print("無法驗證遊戲完整性（伺服器端回傳資料異常）")
+        return False
+
+    local_files = _iter_local_game_files(path)
+    expected_names = sorted((k or "").replace("\\", "/") for k in expected_files.keys() if k)
+    # Strict comparison (ignore generated files on client)
+    if local_files != expected_names:
+        print("本地遊戲檔案清單與伺服器端不一致，需重新下載")
+        return False
+
+    for rel in expected_names:
+        abs_path = os.path.join(path, rel.replace("/", os.sep))
+        if not os.path.exists(abs_path):
+            print(f"缺少檔案 {rel}，需重新下載")
+            return False
+        actual = _sha256_file(abs_path)
+        if actual != expected_files.get(rel):
+            print(f"檔案內容不一致：{rel}，需重新下載")
+            return False
+    return True
+
+
 def fetch_game_detail(game_id: str) -> Optional[Dict]:
     try:
-        resp = requests.get(f"{SERVER_URL}/games/{game_id}")
+        resp = requests.get(f"{SERVER_URL}/games/{game_id}", timeout=REQUEST_TIMEOUT)
         if resp.ok:
             return resp.json().get("data")
     except Exception:
@@ -132,7 +210,7 @@ def download_game_version(player: str, game_id: str, version: Optional[str] = No
     if version:
         params["version"] = version
     try:
-        resp = requests.get(f"{SERVER_URL}/games/{game_id}/download", params=params)
+        resp = requests.get(f"{SERVER_URL}/games/{game_id}/download", params=params, timeout=REQUEST_TIMEOUT)
         data = resp.json()
         if not data.get("success"):
             print(data.get("message", "下載失敗"))
@@ -183,7 +261,7 @@ def register() -> bool:
     print("\n=== 玩家註冊 ===")
     username = prompt("帳號: ").strip()
     password = prompt("密碼: ").strip()
-    resp = requests.post(f"{SERVER_URL}/player/register", json={"username": username, "password": password})
+    resp = requests.post(f"{SERVER_URL}/player/register", json={"username": username, "password": password}, timeout=REQUEST_TIMEOUT)
     data = resp.json()
     print(data["message"])
     return data.get("success", False)
@@ -193,14 +271,14 @@ def login() -> str:
     print("\n=== 玩家登入 ===")
     username = prompt("帳號: ").strip()
     password = prompt("密碼: ").strip()
-    resp = requests.post(f"{SERVER_URL}/player/login", json={"username": username, "password": password})
+    resp = requests.post(f"{SERVER_URL}/player/login", json={"username": username, "password": password}, timeout=REQUEST_TIMEOUT)
     data = resp.json()
     print(data["message"])
     return username if data.get("success") else ""
 
 
 def list_store_games():
-    resp = requests.get(f"{SERVER_URL}/games")
+    resp = requests.get(f"{SERVER_URL}/games", timeout=REQUEST_TIMEOUT)
     if resp.status_code != 200:
         print("無法取得列表")
         return []
@@ -225,7 +303,7 @@ def view_game_detail():
         print("選擇無效")
         return
     game = games[int(choice) - 1]
-    resp = requests.get(f"{SERVER_URL}/games/{game['id']}")
+    resp = requests.get(f"{SERVER_URL}/games/{game['id']}", timeout=REQUEST_TIMEOUT)
     if resp.status_code != 200:
         print("讀取失敗")
         return
@@ -257,7 +335,7 @@ def download_or_update(player: str):
     if local_version == game["latest_version"]:
         print("已是最新版本")
         return
-    resp = requests.get(f"{SERVER_URL}/games/{game['id']}/download")
+    resp = requests.get(f"{SERVER_URL}/games/{game['id']}/download", timeout=REQUEST_TIMEOUT)
     data = resp.json()
     if not data.get("success"):
         print(data.get("message"))
@@ -291,7 +369,7 @@ def create_room(player: str):
     # 確保已安裝最新版本
     if not ensure_latest_version(player, game["id"], game.get("latest_version")):
         return None
-    resp = requests.post(f"{SERVER_URL}/rooms", json={"player": player, "game_id": game["id"]})
+    resp = requests.post(f"{SERVER_URL}/rooms", json={"player": player, "game_id": game["id"]}, timeout=REQUEST_TIMEOUT)
     data = resp.json()
     print(data.get("message"))
     if data.get("success"):
@@ -305,7 +383,7 @@ def create_room(player: str):
 
 
 def list_rooms(installed_games: Optional[List[str]] = None):
-    resp = requests.get(f"{SERVER_URL}/rooms")
+    resp = requests.get(f"{SERVER_URL}/rooms", timeout=REQUEST_TIMEOUT)
     if resp.status_code != 200:
         print("無法取得房間列表")
         return []
@@ -350,7 +428,7 @@ def join_room(player: str) -> Optional[Dict]:
     target_version = detail.get("version")
     if not ensure_latest_version(player, detail.get("game_id"), target_version):
         return None
-    resp = requests.post(f"{SERVER_URL}/rooms/{rid}/join", json={"player": player})
+    resp = requests.post(f"{SERVER_URL}/rooms/{rid}/join", json={"player": player}, timeout=REQUEST_TIMEOUT)
     data = resp.json()
     print(data.get("message"))
     if data.get("success"):
@@ -360,7 +438,7 @@ def join_room(player: str) -> Optional[Dict]:
 
 def leave_room(player: str, room_id: str) -> bool:
     try:
-        resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/leave", json={"player": player})
+        resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/leave", json={"player": player}, timeout=REQUEST_TIMEOUT)
         data = resp.json()
         print(data.get("message"))
         return data.get("success", False)
@@ -370,17 +448,21 @@ def leave_room(player: str, room_id: str) -> bool:
 
 
 def start_room(player: str, room_id: str) -> Optional[Dict]:
-    resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/start", json={"player": player})
-    data = resp.json()
-    print(data.get("message"))
-    if data.get("success"):
-        return data.get("data")
-    return None
+    try:
+        resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/start", json={"player": player}, timeout=REQUEST_TIMEOUT)
+        data = resp.json()
+        print(data.get("message"))
+        if data.get("success"):
+            return data.get("data")
+        return None
+    except Exception as exc:
+        print(f"開始遊戲失敗（連線逾時或伺服器無回應）: {exc}")
+        return None
 
 
 def close_room(player: str, room_id: str):
     try:
-        resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/close", json={"player": player})
+        resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/close", json={"player": player}, timeout=REQUEST_TIMEOUT)
         data = resp.json()
         print(data.get("message"))
         return data.get("success", False)
@@ -389,21 +471,18 @@ def close_room(player: str, room_id: str):
         return False
 
 
-def fetch_room(room_id: str) -> Optional[Dict]:
+def fetch_room(room_id: str, *, with_status: bool = False):
     try:
-        resp = requests.get(f"{SERVER_URL}/rooms/{room_id}")
+        resp = requests.get(f"{SERVER_URL}/rooms/{room_id}", timeout=REQUEST_TIMEOUT)
         if resp.ok:
-            return resp.json().get("data")
+            data = resp.json().get("data")
+            return (data, resp.status_code) if with_status else data
+        return (None, resp.status_code) if with_status else None
     except Exception:
-        return None
-    return None
+        return (None, None) if with_status else None
 
 
 def room_lobby(player: str, room: Dict):
-    """
-    房間內的選單：房主可開始遊戲；其他人等待開始。
-    僅在狀態變更時刷新畫面，移除手動「重新整理」選項，房間資訊與選單同時顯示。
-    """
     hb_stop = threading.Event()
     start_room_heartbeat(player, room["id"], hb_stop)
     launched = False
@@ -439,13 +518,22 @@ def room_lobby(player: str, room: Dict):
 
     try:
         while True:
-            latest = fetch_room(room["id"])
+            latest, status_code = fetch_room(room["id"], with_status=True)
             if not latest:
-                if last_reason:
-                    print(f"房間已關閉：{last_reason}")
-                else:
-                    print("房間已關閉或不存在")
-                return
+                if status_code == 404:
+                    if last_reason:
+                        print(f"房間已關閉：{last_reason}")
+                    else:
+                        print("房間已關閉或不存在")
+                    return
+                print("暫時無法取得房間資訊（連線逾時或伺服器無回應），將繼續重試...")
+                time.sleep(0.5)
+                status = room.get("status")
+                host = room.get("host")
+                rendered = render(room, status, host, force=True)
+                if rendered:
+                    print("選擇: ", end="", flush=True)
+                continue
             room = latest
             if room.get("ended_reason"):
                 last_reason = room.get("ended_reason")
@@ -461,7 +549,7 @@ def room_lobby(player: str, room: Dict):
                 ok = launch_game(player, room["id"], room["game_id"])
                 if ok:
                     return
-                launched = False  # 啟動失敗，留在房間畫面
+                launched = False
                 continue
             if status == "finished":
                 reason = room.get("ended_reason") or "房間已結束"
@@ -474,13 +562,25 @@ def room_lobby(player: str, room: Dict):
                 continue
             choice = (choice or "").strip()
             if not choice:
+                print("請輸入 1-2")
+                rendered = render(room, status, host, force=True)
+                if rendered:
+                    print("選擇: ", end="", flush=True)
                 continue
-            choice = choice[:1] 
             if player == host:
                 if choice == "1":
                     started = start_room(player, room["id"])
                     if started:
                         room = started
+                        continue
+                    latest_after_fail = fetch_room(room["id"])
+                    if latest_after_fail:
+                        room = latest_after_fail
+                        status = room.get("status")
+                        host = room.get("host")
+                    rendered = render(room, status, host, force=True)
+                    if rendered:
+                        print("選擇: ", end="", flush=True)
                     continue
                 elif choice == "2":
                     close_room(player, room["id"])
@@ -514,9 +614,26 @@ def launch_game(player: str, room_id: str, game_id: str) -> bool:
         target_ver = room.get("version")
         if target_ver and info.get("version") != target_ver:
             if not ensure_latest_version(player, game_id, target_ver):
-                return
+                return False
             info = load_installed(player).get(game_id)
+            if not info:
+                return False
     path = info["path"]
+    # Verify integrity before launching to prevent tampering
+    target_ver = info.get("version")
+    if not target_ver:
+        print("無法驗證遊戲完整性（缺少已安裝版本資訊）")
+        return False
+    if not verify_local_game_integrity(game_id, target_ver, path):
+        print("正在重新下載正確版本...")
+        if not download_game_version(player, game_id, target_ver):
+            return False
+        info = load_installed(player).get(game_id)
+        if not info:
+            return False
+        path = info["path"]
+        if not verify_local_game_integrity(game_id, target_ver, path):
+            return False
     manifest = os.path.join(path, "manifest.json")
     entry = "main.py"
     has_game_server = False
@@ -532,7 +649,7 @@ def launch_game(player: str, room_id: str, game_id: str) -> bool:
     # 取得房間詳細以取得 game_server 端點，若沒有則回退平台伺服器
     gs_url = SERVER_URL
     try:
-        room_resp = requests.get(f"{SERVER_URL}/rooms/{room_id}")
+        room_resp = requests.get(f"{SERVER_URL}/rooms/{room_id}", timeout=REQUEST_TIMEOUT)
         if room_resp.ok:
             room_data = room_resp.json().get("data", {})
             game_server = room_data.get("game_server", {})
@@ -597,14 +714,22 @@ def rate_game(player: str):
     if not installed:
         print("尚未下載任何遊戲")
         return
-    games = list(installed.items())
-    for idx, (gid, info) in enumerate(games, 1):
-        print(f"{idx}. {info.get('name', gid)} ({gid})")
+    games = []
+    for gid, info in installed.items():
+        detail = fetch_game_detail(gid)
+        if not detail:
+            continue  # 已下架/不存在的遊戲不提供評分入口
+        games.append((gid, info, detail))
+    if not games:
+        print("目前沒有可評分的遊戲（可能已下架或無法取得資訊）")
+        return
+    for idx, (gid, info, detail) in enumerate(games, 1):
+        print(f"{idx}. {detail.get('name', info.get('name', gid))} ({gid})")
     choice = prompt("選擇要評分的遊戲: ").strip()
     if parse_index(choice, len(games)) is None:
         print("選擇無效")
         return
-    gid, info = games[int(choice) - 1]
+    gid, info, _detail = games[int(choice) - 1]
     try:
         score = int(prompt("評分 1-5: ").strip() or "0")
     except ValueError:
@@ -615,14 +740,14 @@ def rate_game(player: str):
         return
     comment = prompt("評論: ").strip()
     resp = requests.post(
-        f"{SERVER_URL}/ratings", json={"player": player, "game_id": gid, "score": score, "comment": comment}
+        f"{SERVER_URL}/ratings", json={"player": player, "game_id": gid, "score": score, "comment": comment}, timeout=REQUEST_TIMEOUT
     )
     print(resp.json().get("message"))
 
 
 def logout(player: str):
     try:
-        requests.post(f"{SERVER_URL}/player/logout", json={"username": player})
+        requests.post(f"{SERVER_URL}/player/logout", json={"username": player}, timeout=REQUEST_TIMEOUT)
     except Exception:
         pass
 
@@ -631,7 +756,7 @@ def start_heartbeat(player: str, stop_event: threading.Event, interval: int = 5)
     def _beat():
         while not stop_event.is_set():
             try:
-                requests.post(f"{SERVER_URL}/player/heartbeat", json={"username": player})
+                requests.post(f"{SERVER_URL}/player/heartbeat", json={"username": player}, timeout=REQUEST_TIMEOUT)
             except Exception:
                 pass
             stop_event.wait(interval)
@@ -668,7 +793,7 @@ def start_room_heartbeat(player: str, room_id: str, stop_event: threading.Event,
 
 
 def view_my_profile(player: str):
-    resp = requests.get(f"{SERVER_URL}/player/me", params={"username": player})
+    resp = requests.get(f"{SERVER_URL}/player/me", params={"username": player}, timeout=REQUEST_TIMEOUT)
     if not resp.ok:
         print("無法取得個人資料，請確認登入狀態")
         return
@@ -692,9 +817,9 @@ def view_my_profile(player: str):
 def view_status(player: str):
     print("\n=== 大廳狀態 ===")
     try:
-        players_resp = requests.get(f"{SERVER_URL}/players")
-        rooms_resp = requests.get(f"{SERVER_URL}/rooms")
-        games_resp = requests.get(f"{SERVER_URL}/games")
+        players_resp = requests.get(f"{SERVER_URL}/players", timeout=REQUEST_TIMEOUT)
+        rooms_resp = requests.get(f"{SERVER_URL}/rooms", timeout=REQUEST_TIMEOUT)
+        games_resp = requests.get(f"{SERVER_URL}/games", timeout=REQUEST_TIMEOUT)
     except Exception as exc:
         print(f"讀取失敗: {exc}")
         return

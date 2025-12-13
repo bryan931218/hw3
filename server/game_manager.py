@@ -1,5 +1,6 @@
 import base64
 import io
+import hashlib
 import json
 import os
 import re
@@ -301,6 +302,44 @@ def download_game(db: Database, game_id: str, version: Optional[str] = None) -> 
     return True, "OK", {"file_data": blob, "version": target_version, "name": game["name"], "game_id": game_id}
 
 
+def game_integrity(db: Database, game_id: str, version: Optional[str] = None) -> Tuple[bool, str, Optional[Dict]]:
+    """
+    Return expected per-file SHA256 for a given game version so clients can verify local files weren't tampered with.
+    """
+    data = db.snapshot()
+    game = data["games"].get(game_id)
+    if not game or not game.get("active", True):
+        return False, "遊戲不存在或已下架", None
+    target_version = version or game["latest_version"]
+    version_rec = next((v for v in game["versions"] if v["version"] == target_version), None)
+    if not version_rec:
+        return False, "指定版本不存在", None
+    zip_path = version_rec.get("path")
+    if not zip_path or not os.path.exists(zip_path):
+        return False, "伺服器檔案遺失", None
+    try:
+        file_hashes: Dict[str, str] = {}
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                name = (info.filename or "").replace("\\", "/")
+                if not name:
+                    continue
+                content = zf.read(info)
+                file_hashes[name] = hashlib.sha256(content).hexdigest()
+        manifest = {
+            "game_id": game_id,
+            "version": target_version,
+            "files": file_hashes,
+        }
+        return True, "OK", manifest
+    except zipfile.BadZipFile:
+        return False, "伺服器檔案損毀（zip 解析失敗）", None
+    except Exception as exc:
+        return False, f"完整性資訊產生失敗: {exc}", None
+
+
 def create_room(db: Database, host: str, game_id: str) -> Tuple[bool, str, Optional[Dict]]:
     def _create(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
         game = data["games"].get(game_id)
@@ -518,6 +557,8 @@ def add_rating(db: Database, player: str, game_id: str, score: int, comment: str
         game = data["games"].get(game_id)
         if not game:
             return False, "遊戲不存在"
+        if not game.get("active", True):
+            return False, "遊戲已下架，無法評分"
         rating_id = str(data["next_ids"]["rating"])
         data["next_ids"]["rating"] += 1
         data["ratings"][rating_id] = {

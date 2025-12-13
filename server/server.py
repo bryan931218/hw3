@@ -147,6 +147,13 @@ def download_game(game_id):
     return _resp(ok, msg, data, status=200 if ok else 404)
 
 
+@app.route("/games/<game_id>/integrity", methods=["GET"])
+def game_integrity(game_id):
+    version = request.args.get("version")
+    ok, msg, data = game_manager.game_integrity(db, game_id, version)
+    return _resp(ok, msg, data, status=200 if ok else 404)
+
+
 @app.route("/rooms", methods=["GET"])
 def rooms():
     return _resp(True, "ok", game_manager.list_rooms(db))
