@@ -48,6 +48,20 @@ def _cleanup_rooms(data: Dict) -> None:
             hb.setdefault(p, room.get("created_at", now))
         stale_players = [p for p, ts in hb.items() if now - ts > ROOM_HEARTBEAT_TIMEOUT]
         if stale_players:
+            # Waiting room: only host timeout should close the room. Others are simply removed.
+            if room.get("status") == "waiting":
+                host = room.get("host")
+                if host in stale_players:
+                    room["status"] = "finished"
+                    room["ended_at"] = int(now)
+                    room["ended_reason"] = f"房主 {host} 斷線超時，房間結束"
+                    game_runtime.stop_game_server(rid)
+                else:
+                    room["players"] = [p for p in room.get("players", []) if p not in stale_players]
+                    for p in stale_players:
+                        hb.pop(p, None)
+                continue
+            # In-game room: any player timeout ends the room.
             room["status"] = "finished"
             room["ended_at"] = int(now)
             room["ended_reason"] = f"玩家 {', '.join(stale_players)} 斷線超時，房間結束"
@@ -365,12 +379,10 @@ def create_room(db: Database, host: str, game_id: str) -> Tuple[bool, str, Optio
         game = data["games"].get(game_id)
         if not game or not game.get("active", True):
             return False, "遊戲不存在或已下架", None
-        # 若遊戲被標記不接受新房間（例如維護中），拒絕建立
         if not game.get("accept_new_rooms", True):
             return False, "此遊戲暫不接受建立新房間", None
         if host not in data["players"]:
             return False, "玩家不存在", None
-        # 可設定最大房間數量（例如避免 Lobby 超載）
         try:
             max_rooms = int(os.environ.get("MAX_ROOMS", "0"))
         except ValueError:
@@ -412,7 +424,6 @@ def join_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optio
         game = data["games"].get(room["game_id"])
         if not game or not game.get("active", True):
             return False, "遊戲不可用", None
-        # 補齊人數上限/下限資訊
         room.setdefault("max_players", game.get("max_players"))
         room.setdefault("min_players", game.get("min_players"))
         if player not in data["players"]:
@@ -438,14 +449,22 @@ def leave_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Opti
             return False, room.get("ended_reason", "房間已結束"), room
         if player not in room["players"]:
             return False, "不在此房間", None
-        # 任何玩家離開都結束房間並通知其餘玩家回大廳（避免留在遊戲中）
+        host = room.get("host")
+        # Waiting room: only host leaving closes the room; others simply leave.
+        if room.get("status") == "waiting" and player != host:
+            room["players"] = [p for p in room["players"] if p != player]
+            room.setdefault("heartbeats", {}).pop(player, None)
+            return True, "已離開房間", dict(room)
+        # Otherwise (host leaving / in-game): close the room.
         room["players"] = [p for p in room["players"] if p != player]
         room["status"] = "finished"
         room["ended_at"] = int(time.time())
-        room["ended_reason"] = f"{player} 離開房間，房間已關閉"
+        if player == host:
+            room["ended_reason"] = f"房主 {player} 離開房間，房間已關閉"
+        else:
+            room["ended_reason"] = f"{player} 離開房間，房間已關閉"
         game_runtime.stop_game_server(room_id)
-        closed = dict(room)
-        return True, "房間已關閉", closed
+        return True, "房間已關閉", dict(room)
 
     return db.update(_leave)
 
@@ -505,16 +524,6 @@ def list_players(db: Database) -> List[Dict]:
     for name, info in data["players"].items():
         players.append({"name": name, "online": info.get("online", False)})
     return players
-
-
-def player_info(db: Database, player: str) -> Optional[Dict]:
-    data = db.snapshot()
-    p = data["players"].get(player)
-    if not p:
-        return None
-    played = p.get("played_games", {})
-    given_ratings = [r for r in data["ratings"].values() if r.get("player") == player]
-    return {"name": player, "played_games": played, "ratings": given_ratings}
 
 
 def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Optional[Dict]]:
@@ -579,6 +588,20 @@ def add_rating(db: Database, player: str, game_id: str, score: int, comment: str
             return False, "遊戲不存在"
         if not game.get("active", True):
             return False, "遊戲已下架，無法評分"
+
+        # If player already rated this game, overwrite the existing rating.
+        existing_id = None
+        for rid in game.get("ratings", []) or []:
+            r = data.get("ratings", {}).get(rid)
+            if r and r.get("player") == player and r.get("game_id") == game_id:
+                existing_id = rid
+                break
+        if existing_id:
+            data["ratings"][existing_id]["score"] = score
+            data["ratings"][existing_id]["comment"] = comment
+            data["ratings"][existing_id]["created_at"] = int(time.time())
+            return True, "已更新評價"
+
         rating_id = str(data["next_ids"]["rating"])
         data["next_ids"]["rating"] += 1
         data["ratings"][rating_id] = {

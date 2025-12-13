@@ -817,28 +817,6 @@ def start_room_heartbeat(player: str, room_id: str, stop_event: threading.Event,
     return t
 
 
-def view_my_profile(player: str):
-    resp = requests.get(f"{SERVER_URL}/player/me", params={"username": player}, timeout=REQUEST_TIMEOUT)
-    if not resp.ok:
-        print("無法取得個人資料，請確認登入狀態")
-        return
-    data = resp.json().get("data", {})
-    print("\n=== 我的紀錄 ===")
-    print(f"玩家: {data.get('name', player)}")
-    played = data.get("played_games", {})
-    if not played:
-        print("- 尚未有遊戲紀錄")
-    else:
-        print("- 已遊玩：")
-        for gid, cnt in played.items():
-            print(f"  {gid} 次數 {cnt}")
-    ratings = data.get("ratings", [])
-    if ratings:
-        print("- 我的評分：")
-        for r in ratings:
-            print(f"  {r['game_id']} 給 {r['score']} 分: {r.get('comment','')}")
-
-
 def view_status(player: str):
     print("\n=== 大廳狀態 ===")
     try:
@@ -931,8 +909,7 @@ def run_flow():
             "2) 開始遊戲\n"
             "3) 狀態看板\n"
             "4) 評分與評論\n"
-            "5) 我的紀錄\n"
-            "6) 離開\n"
+            "5) 離開\n"
         )
         choice = prompt("選擇: ").strip()
         if choice == "1":
@@ -989,13 +966,11 @@ def run_flow():
         elif choice == "4":
             rate_game(player)
         elif choice == "5":
-            view_my_profile(player)
-        elif choice == "6":
             logout(player)
             hb_stop.set()
             break
         else:
-            print("請輸入 1-6")
+            print("請輸入 1-5")
     return player, hb_stop
 
 

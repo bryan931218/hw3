@@ -172,17 +172,6 @@ def list_players():
     return _resp(True, "ok", game_manager.list_players(db))
 
 
-@app.route("/player/me", methods=["GET"])
-def player_me():
-    username = request.args.get("username", "")
-    if not auth.is_logged_in("player", username):
-        return _resp(False, "請先登入玩家帳號", status=401)
-    info = game_manager.player_info(db, username)
-    if not info:
-        return _resp(False, "玩家不存在", status=404)
-    return _resp(True, "ok", info)
-
-
 @app.route("/rooms", methods=["POST"])
 def create_room():
     body = request.get_json() or {}
