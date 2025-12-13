@@ -1,10 +1,17 @@
 import os
+import os
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 from .database import Database
 
-SESSION_LOGIN_LOCK = int(os.environ.get("SESSION_LOGIN_LOCK", "15")) 
+# How long a session stays valid since the last heartbeat (seconds).
+# Backward compatible env var: SESSION_TTL.
+SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", os.environ.get("SESSION_TTL", "3600")))
+
+# Prevent immediate re-login from another device within this window (seconds).
+# Backward compatible env var: SESSION_LOGIN_LOCK.
+CONCURRENT_LOGIN_LOCK = int(os.environ.get("CONCURRENT_LOGIN_LOCK", os.environ.get("SESSION_LOGIN_LOCK", "30")))
 
 def _get_table(user_type: str) -> str:
     if user_type not in ("developer", "player"):
@@ -48,7 +55,7 @@ def login(db: Database, user_type: str, username: str, password: str) -> Tuple[b
         sessions = _ensure_sessions(data)[user_type]
         now = time.time()
         last_seen = sessions.get(username)
-        if last_seen and now - last_seen < SESSION_LOGIN_LOCK:
+        if last_seen and now - last_seen < CONCURRENT_LOGIN_LOCK:
             return False, "帳號已在其他裝置登入"
         sessions[username] = now
         user["online"] = True
@@ -73,24 +80,15 @@ def logout(db: Database, user_type: str, username: str) -> None:
 
 
 def is_logged_in(db: Database, user_type: str, username: str) -> bool:
-    table = _get_table(user_type)
-
-    def _check(data: Dict) -> bool:
-        sessions = _ensure_sessions(data)[user_type]
+    # IMPORTANT: keep this read-only to avoid persisting to disk on every API request.
+    # Session freshness is updated only by explicit heartbeat endpoints.
+    try:
+        data = db.snapshot()
+        sessions = (data.get("sessions") or {}).get(user_type) or {}
         last_seen = sessions.get(username)
         if not last_seen:
             return False
-        now = time.time()
-        if now - last_seen > SESSION_LOGIN_LOCK:
-            sessions.pop(username, None)
-            if username in data.get(table, {}):
-                data[table][username]["online"] = False
-            return False
-        sessions[username] = now 
-        return True
-
-    try:
-        return bool(db.update(_check))
+        return (time.time() - float(last_seen)) <= SESSION_TIMEOUT
     except Exception:
         return False
 
@@ -105,4 +103,3 @@ def heartbeat(db: Database, user_type: str, username: str) -> None:
         db.update(_beat)
     except Exception:
         pass
-

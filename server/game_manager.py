@@ -444,7 +444,6 @@ def join_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Optio
                 return False, room.get("ended_reason", "房間已結束"), None
             return False, "遊戲已開始", None
         game = data["games"].get(room["game_id"])
-        # Even if the game is inactive (downlisted), existing rooms remain joinable.
         if not game:
             return False, "遊戲不存在", None
         room.setdefault("max_players", game.get("max_players"))
@@ -473,7 +472,6 @@ def leave_room(db: Database, player: str, room_id: str) -> Tuple[bool, str, Opti
         if player not in room["players"]:
             return False, "不在此房間", None
         host = room.get("host")
-        # Waiting room: only host leaving closes the room; others simply leave.
         if room.get("status") == "waiting" and player != host:
             room["players"] = [p for p in room["players"] if p != player]
             room.setdefault("heartbeats", {}).pop(player, None)
@@ -600,11 +598,6 @@ def _mark_played(data: Dict, player: str, game_id: str) -> None:
 
 
 def mark_room_played(db: Database, room_id: str, player: str) -> Tuple[bool, str, Optional[Dict]]:
-    """
-    Increment play count for ALL players in the room exactly once per room,
-    intended to be called right before launching the game clients.
-    """
-
     def _mark(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
         _cleanup_rooms(data)
         room = data.get("rooms", {}).get(room_id)

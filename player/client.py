@@ -606,10 +606,14 @@ def start_room(player: str, room_id: str) -> Optional[Dict]:
 
 def mark_room_played(player: str, room_id: str) -> bool:
     try:
-        resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/played", json={"player": player}, timeout=REQUEST_TIMEOUT)
+        resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/played", json={"player": player}, timeout=8)
         data = resp.json()
+        if not data.get("success"):
+            msg = data.get("message") or "記錄遊玩次數失敗"
+            print(f"[警告] {msg}")
         return bool(data.get("success"))
     except Exception:
+        print("[警告] 記錄遊玩次數失敗（連線逾時或伺服器無回應）")
         return False
 
 
@@ -709,11 +713,22 @@ def room_lobby(player: str, room: Dict):
             if status == "in_game" and not launched:
                 launched = True
                 # Ensure play count is recorded exactly once for all players before launching the game client.
-                # Retry briefly to avoid losing stats due to transient network issues.
+                # If it cannot be confirmed, do not launch (prevents "played count not updated" surprises).
+                confirmed = False
                 for _ in range(3):
                     if mark_room_played(player, room["id"]):
+                        confirmed = True
+                        break
+                    latest_after_mark = fetch_room(room["id"])
+                    if latest_after_mark and latest_after_mark.get("played_counted"):
+                        confirmed = True
+                        room = latest_after_mark
                         break
                     time.sleep(0.3)
+                if not confirmed:
+                    print("無法確認已記錄遊玩次數，請稍後再試（可先退出房間再重新加入）")
+                    launched = False
+                    continue
                 ok = launch_game(player, room["id"], room["game_id"])
                 if ok:
                     return
