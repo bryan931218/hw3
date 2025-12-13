@@ -290,20 +290,7 @@ def list_games(db: Database, include_inactive: bool = False) -> List[Dict]:
 
 def _player_game_stats(data: Dict, player: str, game_id: str) -> Dict:
     played_count = data.get("players", {}).get(player, {}).get("played_games", {}).get(game_id, 0) or 0
-    results = data.get("players", {}).get(player, {}).get("game_results", {}).get(game_id, {}) or {}
-    wins = int(results.get("wins", 0) or 0)
-    losses = int(results.get("losses", 0) or 0)
-    draws = int(results.get("draws", 0) or 0)
-    win_rate = None
-    if played_count > 0:
-        win_rate = round(wins / float(played_count), 4)
-    return {
-        "plays": int(played_count),
-        "wins": wins,
-        "losses": losses,
-        "draws": draws,
-        "win_rate": win_rate,
-    }
+    return {"plays": int(played_count)}
 
 
 def game_detail(db: Database, game_id: str, player: Optional[str] = None) -> Optional[Dict]:
@@ -320,58 +307,6 @@ def game_detail(db: Database, game_id: str, player: Optional[str] = None) -> Opt
     if player and player in data.get("players", {}):
         game["player_stats"] = _player_game_stats(data, player, game_id)
     return game
-
-
-def report_room_result(db: Database, room_id: str, reporter: str, winners: List[str]) -> Tuple[bool, str, Optional[Dict]]:
-    def _report(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
-        _cleanup_rooms(data)
-        room = data.get("rooms", {}).get(room_id)
-        if not room:
-            return False, "房間不存在或已關閉", None
-        players = list(room.get("players") or [])
-        if reporter not in players:
-            return False, "你不在此房間", None
-        if not isinstance(winners, list):
-            return False, "winners 格式錯誤", None
-        normalized = []
-        for w in winners:
-            if not isinstance(w, str):
-                continue
-            w = w.strip()
-            if not w or w not in players:
-                continue
-            if w not in normalized:
-                normalized.append(w)
-        normalized.sort()
-
-        reports = room.setdefault("result_reports", {})
-        reports[reporter] = normalized
-
-        if not room.get("result_finalized"):
-            room["winners"] = normalized
-            room["result_finalized"] = True
-            game_id = room.get("game_id")
-            if game_id:
-                for p in players:
-                    info = data["players"].setdefault(p, {})
-                    res = info.setdefault("game_results", {}).setdefault(game_id, {"wins": 0, "losses": 0, "draws": 0})
-                    if not normalized or set(normalized) == set(players):
-                        res["draws"] = int(res.get("draws", 0) or 0) + 1
-                    elif p in normalized:
-                        res["wins"] = int(res.get("wins", 0) or 0) + 1
-                    else:
-                        res["losses"] = int(res.get("losses", 0) or 0) + 1
-
-        payload = {
-            "room_id": room_id,
-            "game_id": room.get("game_id"),
-            "winners": room.get("winners") or [],
-            "finalized": bool(room.get("result_finalized")),
-            "reports": len(room.get("result_reports") or {}),
-        }
-        return True, "已記錄結果", payload
-
-    return db.update(_report)
 
 
 def download_game(db: Database, game_id: str, version: Optional[str] = None) -> Tuple[bool, str, Optional[Dict]]:

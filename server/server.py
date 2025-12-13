@@ -243,18 +243,6 @@ def close_room(room_id):
     return _resp(ok, msg, data, status=200 if ok else 400)
 
 
-@app.route("/rooms/<room_id>/result", methods=["POST"])
-def report_room_result(room_id):
-    body = request.get_json() or {}
-    player = body.get("player", "")
-    if not auth.is_logged_in(db, "player", player):
-        return _resp(False, "請先登入玩家帳號", status=401)
-    auth.heartbeat(db, "player", player)
-    winners = body.get("winners", [])
-    ok, msg, data = game_manager.report_room_result(db, room_id, player, winners)
-    return _resp(ok, msg, data, status=200 if ok else 400)
-
-
 @app.route("/ratings", methods=["POST"])
 def add_rating():
     body = request.get_json() or {}

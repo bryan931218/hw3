@@ -33,19 +33,6 @@ def leave_room_platform(platform_server: str, room_id: str, player: str):
         pass
 
 
-def report_result_platform(platform_server: str, room_id: str, player: str, winners):
-    if not platform_server or not room_id or not player:
-        return
-    try:
-        requests.post(
-            f"{platform_server}/rooms/{room_id}/result",
-            json={"player": player, "winners": winners or []},
-            timeout=2,
-        )
-    except Exception:
-        pass
-
-
 def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
@@ -89,7 +76,6 @@ def play_network(server: str, platform_server: str, room: str, player: str):
     fail_count = 0
     exit_requested = False
     exit_requested_at = None
-    result_reported = False
     while True:
         state_resp = get_state(server, room, player)
         if not state_resp.get("success"):
@@ -152,9 +138,6 @@ def play_network(server: str, platform_server: str, room: str, player: str):
                 print(f"比分   ➜ {score_line}")
             if status == "finished":
                 winners = state.get("winner", [])
-                if not result_reported:
-                    report_result_platform(platform_server, room, player, winners)
-                    result_reported = True
                 if winners is not None:
                     if not winners or (isinstance(winners, list) and len(winners) > 1):
                         print("平手！")
@@ -173,9 +156,6 @@ def play_network(server: str, platform_server: str, room: str, player: str):
             else:
                 print("輪到你擲骰，按 Enter ⏎ ")
         if status == "finished":
-            if not result_reported:
-                report_result_platform(platform_server, room, player, state.get("winner", []))
-                result_reported = True
             if not exit_requested:
                 read_any_key_blocking()
                 exit_requested = True

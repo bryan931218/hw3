@@ -438,10 +438,6 @@ def store_game_menu(player: str, game: Dict):
         info = installed.get(gid)
         stats = (detail or {}).get("player_stats") or {}
         plays = int(stats.get("plays", 0) or 0)
-        wins = int(stats.get("wins", 0) or 0)
-        losses = int(stats.get("losses", 0) or 0)
-        draws = int(stats.get("draws", 0) or 0)
-        win_rate = stats.get("win_rate")
         clear_screen()
         print(f"=== {detail.get('name', gid)} ({gid}) ===")
         print(f"作者: {detail.get('developer', '-')}")
@@ -449,10 +445,6 @@ def store_game_menu(player: str, game: Dict):
         print(f"最新版本: {detail.get('latest_version', '-')}")
         print(f"人數: {detail.get('min_players', '?')}-{detail.get('max_players', '?')}")
         print(f"遊玩次數: {plays}")
-        if win_rate is None:
-            print(f"勝率: -  (勝 {wins} / 敗 {losses} / 和 {draws})")
-        else:
-            print(f"勝率: {round(float(win_rate) * 100, 2)}%  (勝 {wins} / 敗 {losses} / 和 {draws})")
         if info:
             print(f"安裝狀態: 已安裝（{info.get('version', '-') }）")
         else:

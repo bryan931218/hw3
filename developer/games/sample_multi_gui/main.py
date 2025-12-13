@@ -31,24 +31,8 @@ class DiceRaceGUI:
         self._last_log = None
         self._last_roll_logged = None
         self.closed = False
-        self.result_reported = False
         self._build_ui()
         threading.Thread(target=self._poll_loop, daemon=True).start()
-
-    def _report_result(self, winners):
-        if self.result_reported:
-            return
-        if not self.platform_server or not self.room or not self.player:
-            return
-        try:
-            requests.post(
-                f"{self.platform_server}/rooms/{self.room}/result",
-                json={"player": self.player, "winners": winners or []},
-                timeout=2,
-            )
-        except Exception:
-            pass
-        self.result_reported = True
 
     def _build_ui(self):
         tk.Label(self.root, text="Dice Race", font=("Segoe UI", 20, "bold")).pack(pady=(10, 4))
@@ -120,8 +104,6 @@ class DiceRaceGUI:
             self.finished = True
             self.roll_btn.config(state=tk.DISABLED)
             winners = state.get("winner", [])
-            if winners is not None:
-                self._report_result(winners)
             if winners is None:
                 self.status.set("有玩家離開，遊戲中止")
                 self._append_log("有玩家離開，遊戲中止")
