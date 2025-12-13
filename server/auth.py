@@ -1,16 +1,15 @@
 import os
-import os
 import time
 from typing import Dict, Tuple
-
 from .database import Database
 
-# How long a session stays valid since the last heartbeat (seconds).
-# Backward compatible env var: SESSION_TTL.
-SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", os.environ.get("SESSION_TTL", "3600")))
+HEARTBEAT_TIMEOUT = int(
+    os.environ.get(
+        "HEARTBEAT_TIMEOUT",
+        os.environ.get("SESSION_TIMEOUT", os.environ.get("ONLINE_TIMEOUT", "30")),
+    )
+)
 
-# Prevent immediate re-login from another device within this window (seconds).
-# Backward compatible env var: SESSION_LOGIN_LOCK.
 CONCURRENT_LOGIN_LOCK = int(os.environ.get("CONCURRENT_LOGIN_LOCK", os.environ.get("SESSION_LOGIN_LOCK", "30")))
 
 def _get_table(user_type: str) -> str:
@@ -80,15 +79,13 @@ def logout(db: Database, user_type: str, username: str) -> None:
 
 
 def is_logged_in(db: Database, user_type: str, username: str) -> bool:
-    # IMPORTANT: keep this read-only to avoid persisting to disk on every API request.
-    # Session freshness is updated only by explicit heartbeat endpoints.
     try:
         data = db.snapshot()
         sessions = (data.get("sessions") or {}).get(user_type) or {}
         last_seen = sessions.get(username)
         if not last_seen:
             return False
-        return (time.time() - float(last_seen)) <= SESSION_TIMEOUT
+        return (time.time() - float(last_seen)) <= HEARTBEAT_TIMEOUT
     except Exception:
         return False
 

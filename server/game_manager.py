@@ -12,11 +12,11 @@ import requests
 
 from .database import Database
 from . import game_runtime
+from .auth import HEARTBEAT_TIMEOUT
 
 STORAGE_ROOT = os.path.join(os.path.dirname(__file__), "storage", "games")
 ROOM_HEARTBEAT_TIMEOUT = 15
 FINISHED_ROOM_GRACE_SECONDS = 30 
-ONLINE_TIMEOUT = int(os.environ.get("ONLINE_TIMEOUT", "20"))  # seconds
 REQUIRED_MANIFEST_KEYS = ["entry", "min_players", "max_players", "server_entry"]
 
 
@@ -32,19 +32,16 @@ def _cleanup_rooms(data: Dict) -> None:
     now = time.time()
     to_delete = []
     for rid, room in list(data.get("rooms", {}).items()):
-        # Skip already finished rooms; delete later if grace expired
         if room.get("status") == "finished":
             ended_at = room.get("ended_at", now)
             if now - ended_at > FINISHED_ROOM_GRACE_SECONDS:
                 to_delete.append(rid)
             continue
-        # Initialize missing heartbeat entries for all players
         hb = room.setdefault("heartbeats", {})
         for p in room.get("players", []):
             hb.setdefault(p, room.get("created_at", now))
         stale_players = [p for p, ts in hb.items() if now - ts > ROOM_HEARTBEAT_TIMEOUT]
         if stale_players:
-            # Waiting room: only host timeout should close the room. Others are simply removed.
             if room.get("status") == "waiting":
                 host = room.get("host")
                 if host in stale_players:
@@ -57,7 +54,6 @@ def _cleanup_rooms(data: Dict) -> None:
                     for p in stale_players:
                         hb.pop(p, None)
                 continue
-            # In-game room: any player timeout ends the room.
             room["status"] = "finished"
             room["ended_at"] = int(now)
             room["ended_reason"] = f"玩家 {', '.join(stale_players)} 斷線超時，房間結束"
@@ -546,7 +542,7 @@ def list_players(db: Database) -> List[Dict]:
     players = []
     for name, info in data["players"].items():
         last_seen = sessions.get(name)
-        online = bool(last_seen and now - float(last_seen) <= ONLINE_TIMEOUT)
+        online = bool(last_seen and now - float(last_seen) <= HEARTBEAT_TIMEOUT)
         players.append({"name": name, "online": online})
     return players
 
