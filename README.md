@@ -67,7 +67,7 @@ python run_player.py
 ## Demo 快速流程
 1) 啟動後端：`python run_server.py`
 2) 開發者端：`python run_developer.py`
-   - 註冊/登入 → 上架 `developer/games/sample_cli`、`developer/games/sample_gui`、`developer/games/sample_multi_gui`
+   - 註冊/登入 → 上架 `developer/games/sample_cli`、`developer/games/tetris`、`developer/games/sample_multi_gui`
 3) 玩家端：`python run_player.py`
    - 註冊/登入 → 商城瀏覽 → 下載任一遊戲
    - 建立房間 → 啟動房間遊戲（會執行本地 `main.py`）→ 返回後對遊戲評分留言

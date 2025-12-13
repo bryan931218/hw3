@@ -587,7 +587,6 @@ def start_room(db: Database, room_id: str, player: str) -> Tuple[bool, str, Opti
             public_port = os.environ.get("PORT", "5000")
             room["game_server"] = {"host": public_host, "port": public_port}
         for p in room["players"]:
-            _mark_played(data, p, room["game_id"])
             _touch_room_heartbeat(room, p)
         return True, "遊戲開始", room
 
@@ -598,6 +597,36 @@ def _mark_played(data: Dict, player: str, game_id: str) -> None:
     player_info = data["players"].setdefault(player, {})
     played = player_info.setdefault("played_games", {})
     played[game_id] = played.get(game_id, 0) + 1
+
+
+def mark_room_played(db: Database, room_id: str, player: str) -> Tuple[bool, str, Optional[Dict]]:
+    """
+    Increment play count for ALL players in the room exactly once per room,
+    intended to be called right before launching the game clients.
+    """
+
+    def _mark(data: Dict) -> Tuple[bool, str, Optional[Dict]]:
+        _cleanup_rooms(data)
+        room = data.get("rooms", {}).get(room_id)
+        if not room:
+            return False, "房間不存在或已關閉", None
+        if room.get("status") != "in_game":
+            return False, "房間尚未開始遊戲", None
+        players = list(room.get("players") or [])
+        if player not in players:
+            return False, "你不在此房間", None
+        if room.get("played_counted"):
+            return True, "已記錄遊玩次數", {"room_id": room_id, "counted": True}
+        game_id = room.get("game_id")
+        if not game_id:
+            return False, "房間遊戲資訊錯誤", None
+        for p in players:
+            _mark_played(data, p, game_id)
+        room["played_counted"] = True
+        room["played_counted_at"] = int(time.time())
+        return True, "已記錄遊玩次數", {"room_id": room_id, "counted": True}
+
+    return db.update(_mark)
 
 
 def add_rating(db: Database, player: str, game_id: str, score: int, comment: str) -> Tuple[bool, str]:

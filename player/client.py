@@ -604,6 +604,15 @@ def start_room(player: str, room_id: str) -> Optional[Dict]:
         return None
 
 
+def mark_room_played(player: str, room_id: str) -> bool:
+    try:
+        resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/played", json={"player": player}, timeout=REQUEST_TIMEOUT)
+        data = resp.json()
+        return bool(data.get("success"))
+    except Exception:
+        return False
+
+
 def close_room(player: str, room_id: str):
     try:
         resp = requests.post(f"{SERVER_URL}/rooms/{room_id}/close", json={"player": player}, timeout=REQUEST_TIMEOUT)
@@ -699,6 +708,12 @@ def room_lobby(player: str, room: Dict):
             rendered = render(room, status, host)
             if status == "in_game" and not launched:
                 launched = True
+                # Ensure play count is recorded exactly once for all players before launching the game client.
+                # Retry briefly to avoid losing stats due to transient network issues.
+                for _ in range(3):
+                    if mark_room_played(player, room["id"]):
+                        break
+                    time.sleep(0.3)
                 ok = launch_game(player, room["id"], room["game_id"])
                 if ok:
                     return

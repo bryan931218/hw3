@@ -221,6 +221,17 @@ def start_room(room_id):
     return _resp(ok, msg, data, status=200 if ok else 400)
 
 
+@app.route("/rooms/<room_id>/played", methods=["POST"])
+def mark_room_played(room_id):
+    body = request.get_json() or {}
+    player = body.get("player", "")
+    if not auth.is_logged_in(db, "player", player):
+        return _resp(False, "請先登入玩家帳號", status=401)
+    auth.heartbeat(db, "player", player)
+    ok, msg, data = game_manager.mark_room_played(db, room_id, player)
+    return _resp(ok, msg, data, status=200 if ok else 400)
+
+
 @app.route("/rooms/<room_id>/heartbeat", methods=["POST"])
 def room_heartbeat(room_id):
     body = request.get_json() or {}
