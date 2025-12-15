@@ -18,22 +18,17 @@ state = {
 
 @app.route("/state", methods=["GET"])
 def get_state():
-    """
-    透過輪詢也能註冊玩家，達到 3 人即開始，避免卡在 waiting。
-    """
     player = request.args.get("player")
     if player:
         if player not in state["players"] and len(state["players"]) < 4:
             state["players"].append(player)
             state["scores"][player] = 0
-        # 確保每個玩家都有分數欄位
         for p in state["players"]:
             state["scores"].setdefault(p, 0)
         if len(state["players"]) >= 3 and state["status"] == "waiting":
             state["status"] = "in_game"
         if len(state["players"]) < 3 and state["status"] != "finished":
             state["status"] = "waiting"
-    # turn_index 防超界
     if state["players"]:
         state["turn_index"] = state["turn_index"] % len(state["players"])
     return jsonify({"success": True, "data": state})
